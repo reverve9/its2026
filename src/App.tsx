@@ -49,7 +49,15 @@ export default function App() {
           />
           <Route
             path="/settlement"
-            element={<Placeholder title="정산 관리" note="출결·누적시간 기반 실비(식비·교통비) 자동 산출 — 인력운영 모듈(과업 3-1). 제작 예정." />}
+            element={<Placeholder title="실비 정산 현황" note="출결·누적시간 기반 식비·교통비 자동 산출 집계 — 총액·거점별·일자별 (과업 3-1). 제작 예정." />}
+          />
+          <Route
+            path="/settlement/detail"
+            element={<Placeholder title="개인별 정산 내역" note="1인당 출결 연동 실비(식비·교통비) 내역. 제작 예정." />}
+          />
+          <Route
+            path="/settlement/close"
+            element={<Placeholder title="정산 마감·산출내역서" note="일자별 마감 + 산출내역서 출력(제안서 산출내역 근거). 제작 예정." />}
           />
           <Route
             path="/issues"

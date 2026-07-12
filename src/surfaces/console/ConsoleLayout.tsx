@@ -15,8 +15,15 @@ const groups: { title: string; items: NavItem[] }[] = [
     title: '기록',
     items: [
       { to: '/report', label: '일일 운영보고' },
-      { to: '/settlement', label: '정산 관리' },
       { to: '/issues', label: '민원·분실물·미아' },
+    ],
+  },
+  {
+    title: '정산',
+    items: [
+      { to: '/settlement', label: '실비 정산 현황', end: true },
+      { to: '/settlement/detail', label: '개인별 정산 내역' },
+      { to: '/settlement/close', label: '정산 마감·산출내역서' },
     ],
   },
 ]
