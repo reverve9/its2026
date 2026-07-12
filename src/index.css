@@ -1,0 +1,35 @@
+/* ── 웹폰트 (전부 OFL) ─────────────────────────────────────────
+   개발단계: CDN 로딩(전 웨이트). 최종: 컴포넌트에서 웨이트 확정 후
+   public/fonts self-host subset 으로 교체 예정. */
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css");
+@import url("https://fonts.googleapis.com/css2?family=Raleway:wght@100;200;300;400;500;600;700;800;900&display=swap");
+@import url("https://cdn.jsdelivr.net/gh/fonts-archive/Paperlogy/Paperlogy.css");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-page text-ink-base font-sans antialiased;
+    /* 숫자 = 비례형 기본(tnum 전역 강제 안 함).
+       정렬은 레이아웃(우측정렬·슬롯예약)으로, 표·정산 컬럼만 .tnum 국소 적용 */
+    font-feature-settings: 'kern' 1;
+  }
+}
+
+@layer utilities {
+  /* 표·정산·시각 컬럼 정렬용 국소 고정폭 숫자 */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  /* 공통 카드 (토큰 기반) */
+  .card {
+    @apply rounded-xl border border-line bg-surface shadow-sm;
+  }
+}
