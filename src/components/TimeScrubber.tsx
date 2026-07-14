@@ -1,3 +1,4 @@
+import { useLocation } from 'react-router-dom'
 import { useNowMin } from '../lib/useLive'
 import { setNowMin, resetNow, fmtHM } from '../lib/clock'
 
@@ -16,8 +17,12 @@ const MARKS = [
 ]
 
 export default function TimeScrubber() {
+  const { pathname } = useLocation()
   const now = useNowMin()
   const shift = now < 14 * 60 ? '오전조' : '오후조'
+
+  // 현장앱(/f)에선 숨김 — 콘솔 관제 전용 dev 컨트롤.
+  if (pathname.startsWith('/f')) return null
 
   return (
     <div className="fixed left-1/2 top-3 z-[60] w-[min(720px,92vw)] -translate-x-1/2 rounded-xl border border-line bg-white/95 px-4 py-2.5 shadow-lg backdrop-blur">
