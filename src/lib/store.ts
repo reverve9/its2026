@@ -138,6 +138,14 @@ export function placeReserve(reserveId: string, zoneId: string, shift: 'AM' | 'P
   return true
 }
 
+// 이슈 상태 전이(접수→처리중→완료).
+export function setIssueStatus(id: string, status: Issue['status']): void {
+  const i = issues.find((x) => x.id === id)
+  if (!i) return
+  i.status = status
+  emitChange()
+}
+
 // 이슈 접수(멱등). 기록 시 생성된 Issue 반환, 중복이면 기존 반환.
 export function addIssue(input: Omit<Issue, 'id'>): Issue {
   if (input.idempotencyKey) {

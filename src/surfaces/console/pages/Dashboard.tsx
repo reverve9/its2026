@@ -47,6 +47,18 @@ export default function Dashboard() {
         right={<LivePill label="실시간 연결됨" />}
       />
 
+      {/* 위기 상태 배너(A2) — 근무공백 발생 시 부각. 교대 직후 미출근 다발 구간 */}
+      {gapCount > 0 && (
+        <div className="mb-5 flex items-center gap-3 rounded-xl border-2 border-critical bg-critical-soft px-5 py-3.5">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-critical text-xl text-white">⚠</span>
+          <div className="min-w-0 flex-1 text-label">
+            <b className="text-critical">위기 상태 — 즉시 대응 필요.</b>{' '}
+            <span className="text-ink-base">근무공백 {gapCount}거점 · {shiftKo} 미출근 {kpi.absent}명. 우측 경보에서 예비인력 배치.</span>
+          </div>
+          <span className="tnum shrink-0 rounded-lg bg-surface px-2.5 py-1 text-caption font-semibold text-critical">교대 후 {kpi.minsSinceShiftStart}분</span>
+        </div>
+      )}
+
       {/* KPI 스트립 — 교대 인지형 */}
       <div className="mb-5 grid grid-cols-6 gap-3">
         <StatTile label="배치 인원" value={kpi.total} unit="명" hint="오전 55 · 오후 55" />

@@ -37,7 +37,7 @@ export default function ConsoleLayout() {
   return (
     <div className="flex h-full">
       {/* 사이드바 */}
-      <aside className="flex w-60 shrink-0 flex-col bg-primary-700 text-neutral-100">
+      <aside className="no-print flex w-60 shrink-0 flex-col bg-primary-700 text-neutral-100">
         <div className="px-5 pb-5 pt-6">
           <div className="font-latin text-[11px] font-semibold uppercase tracking-[0.2em] text-primary-200/70">
             ITS World Congress 2026
@@ -84,7 +84,7 @@ export default function ConsoleLayout() {
 
       {/* 본문 */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-line bg-surface px-6 py-3">
+        <header className="no-print flex items-center justify-between border-b border-line bg-surface px-6 py-3">
           <div>
             <div className="text-body font-semibold text-ink-strong">{OPS_INFO.eventName}</div>
             <div className="text-caption text-ink-muted">

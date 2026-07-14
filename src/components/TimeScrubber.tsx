@@ -26,7 +26,7 @@ export default function TimeScrubber() {
   const posCls = isField ? 'bottom-16' : 'top-3'
 
   return (
-    <div className={`fixed left-1/2 z-[60] w-[min(720px,92vw)] -translate-x-1/2 rounded-xl border border-line bg-white/95 px-4 py-2.5 shadow-lg backdrop-blur ${posCls}`}>
+    <div className={`no-print fixed left-1/2 z-[60] w-[min(720px,92vw)] -translate-x-1/2 rounded-xl border border-line bg-white/95 px-4 py-2.5 shadow-lg backdrop-blur ${posCls}`}>
       <div className="flex items-center gap-3">
         <span className="shrink-0 rounded-md bg-neutral-900 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
           DEV

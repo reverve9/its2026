@@ -17,6 +17,7 @@ import {
   zoneOf,
   addEvent,
   addIssue,
+  setIssueStatus,
   placeReserve,
   hasEventKey,
   rawSafety,
@@ -40,6 +41,7 @@ import type {
   CheckState,
   CheckMethod,
   Coords,
+  IssueStatus,
 } from '../types'
 
 // ── 조 상수 ─────────────────────────────────────────────
@@ -242,6 +244,9 @@ export async function getAttendanceEvents(): Promise<AttendanceEvent[]> {
 
 export async function getIssues(): Promise<Issue[]> {
   return rawIssues()
+}
+export async function updateIssueStatus(id: string, status: IssueStatus): Promise<void> {
+  setIssueStatus(id, status)
 }
 export async function getNotices(): Promise<Notice[]> {
   return rawNotices()

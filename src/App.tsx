@@ -4,6 +4,8 @@ import FieldLayout from './surfaces/field/FieldLayout'
 import Dashboard from './surfaces/console/pages/Dashboard'
 import People from './surfaces/console/pages/People'
 import Safety from './surfaces/console/pages/Safety'
+import Issues from './surfaces/console/pages/Issues'
+import Report from './surfaces/console/pages/Report'
 import Placeholder from './components/Placeholder'
 import TimeScrubber from './components/TimeScrubber'
 
@@ -14,7 +16,7 @@ function SurfaceSwitcher() {
     { to: '/f', label: '현장 앱' },
   ]
   return (
-    <div className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 gap-1 rounded-full border border-line bg-white/95 p-1 shadow-lg backdrop-blur">
+    <div className="no-print fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 gap-1 rounded-full border border-line bg-white/95 p-1 shadow-lg backdrop-blur">
       {items.map((i) => (
         <NavLink
           key={i.to}
@@ -50,10 +52,7 @@ export default function App() {
             element={<Placeholder title="물품지급 현황" note="활동물품(바람막이·가방) 110세트 지급/미지급·잔여·지급일 트래킹 (본공고 3-1 제작·배부). 제작 예정." />}
           />
           <Route path="/safety" element={<Safety />} />
-          <Route
-            path="/report"
-            element={<Placeholder title="일일 운영보고 자동생성" note="척추 데이터로 운영보고 자동 정리 = 차별성" />}
-          />
+          <Route path="/report" element={<Report />} />
           <Route
             path="/settlement"
             element={<Placeholder title="실비 정산 현황" note="출결·누적시간 기반 식비·교통비 자동 산출 집계 — 총액·거점별·일자별 (과업 3-1). 제작 예정." />}
@@ -66,10 +65,7 @@ export default function App() {
             path="/settlement/close"
             element={<Placeholder title="정산 마감·산출내역서" note="일자별 마감 + 산출내역서 출력(제안서 산출내역 근거). 제작 예정." />}
           />
-          <Route
-            path="/issues"
-            element={<Placeholder title="민원·분실물·미아 접수대장" note="접수 → 처리상태 로그(라이트)" />}
-          />
+          <Route path="/issues" element={<Issues />} />
         </Route>
 
         {/* 현장 모바일 PWA — 역할 분기(봉사자 / 거점관리자) */}

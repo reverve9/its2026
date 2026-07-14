@@ -33,3 +33,17 @@
     @apply rounded-xl border border-line bg-surface shadow-sm;
   }
 }
+
+/* 인쇄(PDF) — 콘솔 크롬 숨기고 보고서 본문만 */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+  .print-area {
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
