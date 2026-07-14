@@ -3,6 +3,7 @@ import ConsoleLayout from './surfaces/console/ConsoleLayout'
 import FieldLayout from './surfaces/field/FieldLayout'
 import Dashboard from './surfaces/console/pages/Dashboard'
 import People from './surfaces/console/pages/People'
+import Safety from './surfaces/console/pages/Safety'
 import Placeholder from './components/Placeholder'
 import TimeScrubber from './components/TimeScrubber'
 
@@ -48,10 +49,7 @@ export default function App() {
             path="/goods"
             element={<Placeholder title="물품지급 현황" note="활동물품(바람막이·가방) 110세트 지급/미지급·잔여·지급일 트래킹 (본공고 3-1 제작·배부). 제작 예정." />}
           />
-          <Route
-            path="/safety"
-            element={<Placeholder title="안전·비상 관제" note="SOS · 기상특보 대응 · 비상연락망 · 의료지원반 연계" />}
-          />
+          <Route path="/safety" element={<Safety />} />
           <Route
             path="/report"
             element={<Placeholder title="일일 운영보고 자동생성" note="척추 데이터로 운영보고 자동 정리 = 차별성" />}

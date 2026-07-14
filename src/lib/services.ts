@@ -2,7 +2,7 @@
 // 저장소는 원시 사실만 보관하고, '현재 시각'(clock) 기준 파생값은 전부 여기서 계산한다(R5).
 // 쓰기는 명령형 함수(R3) + 멱등키(R4). 나중에 Supabase 로 교체해도 이 시그니처는 불변.
 
-import { getNowMin, fmtHM } from './clock'
+import { getNowMin, getNowHM, fmtHM } from './clock'
 import { distanceM } from './geo'
 import {
   rawZones,
@@ -19,8 +19,12 @@ import {
   addIssue,
   placeReserve,
   hasEventKey,
+  rawSafety,
+  setWorkStop,
+  setWeatherStop,
+  setHazard,
 } from './store'
-import type { StoredAssignment, StoredEvent } from './store'
+import type { StoredAssignment, StoredEvent, SafetyState } from './store'
 import type {
   Zone,
   Assignment,
@@ -439,6 +443,44 @@ export async function reportIssue(input: {
   return addIssue({
     idempotencyKey: input.idempotencyKey, type: input.type, zoneId: input.zoneId,
     status: 'received', time: fmtHM(input.ts), message: input.note,
+  })
+}
+
+// ── 안전·비상 (중대재해 6-3) ────────────────────────────
+export type { SafetyState, HazardItem } from './store'
+export async function getSafety(): Promise<SafetyState> {
+  return rawSafety()
+}
+// 안전사고·SOS 이슈(현장앱 SOS·순회감사 불일치가 흘러듦).
+export async function getSafetyIssues(): Promise<Issue[]> {
+  return rawIssues().filter((i) => i.type === '안전사고')
+}
+// 작업중지 발령/해제 — 중대재해 6-3 핵심.
+export async function declareWorkStop(reason: string): Promise<void> {
+  setWorkStop(true, reason, getNowHM())
+}
+export async function liftWorkStop(): Promise<void> {
+  setWorkStop(false, '', null)
+}
+// 기상특보 야외운영중단 전파/해제.
+export async function declareWeatherStop(): Promise<void> {
+  setWeatherStop(true, getNowHM())
+}
+export async function liftWeatherStop(): Promise<void> {
+  setWeatherStop(false, null)
+}
+// 위험요인 점검 토글.
+export async function toggleHazard(id: string, checked: boolean): Promise<void> {
+  setHazard(id, checked, getNowHM())
+}
+// 사고 초동보고 — 안전사고 이슈로 접수 + 초동조치 메모.
+export async function fileIncidentReport(input: {
+  zoneId: string; summary: string; firstAction: string; ts: number; idempotencyKey: string
+}): Promise<Issue> {
+  return addIssue({
+    idempotencyKey: input.idempotencyKey, type: '안전사고', zoneId: input.zoneId,
+    status: 'in_progress', time: fmtHM(input.ts),
+    message: `[초동보고] ${input.summary} · 초동조치: ${input.firstAction}`,
   })
 }
 

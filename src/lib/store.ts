@@ -56,6 +56,48 @@ const issues: Issue[] = seedIssues.map((i) => ({ ...i }))
 let eventSeq = events.length
 let issueSeq = issues.length
 
+// ── 안전 상태(중대재해 6-3) — 작업중지·위험요인 점검·기상특보 ──
+export interface HazardItem {
+  id: string
+  label: string
+  checked: boolean
+  checkedAt?: string
+}
+export interface SafetyState {
+  workStop: { active: boolean; reason: string; at: string | null } // 작업중지 발령
+  weatherStop: { active: boolean; at: string | null } // 기상특보 야외운영중단
+  hazards: HazardItem[] // 위험요인 점검표
+}
+const safety: SafetyState = {
+  workStop: { active: false, reason: '', at: null },
+  weatherStop: { active: false, at: null },
+  hazards: [
+    { id: 'hz-elec', label: '전기·발전기 배선 접지·절연 상태', checked: true, checkedAt: '09:30' },
+    { id: 'hz-struct', label: '무대·천막·구조물 결속·전도 방지', checked: true, checkedAt: '09:35' },
+    { id: 'hz-path', label: '보행 동선·비상통로 확보', checked: true, checkedAt: '09:40' },
+    { id: 'hz-fire', label: '소화기·소화전·비상구 위치 점검', checked: true, checkedAt: '09:42' },
+    { id: 'hz-med', label: '응급의료·제세동기(AED) 대기 상태', checked: false },
+    { id: 'hz-wind', label: '강풍·기상 악화 대비 야외물 고정', checked: false },
+  ],
+}
+export const rawSafety = (): SafetyState => safety
+
+export function setWorkStop(active: boolean, reason: string, at: string | null): void {
+  safety.workStop = { active, reason: active ? reason : '', at: active ? at : null }
+  emitChange()
+}
+export function setWeatherStop(active: boolean, at: string | null): void {
+  safety.weatherStop = { active, at: active ? at : null }
+  emitChange()
+}
+export function setHazard(id: string, checked: boolean, at: string | null): void {
+  const h = safety.hazards.find((x) => x.id === id)
+  if (!h) return
+  h.checked = checked
+  h.checkedAt = checked ? at ?? undefined : undefined
+  emitChange()
+}
+
 // ── 읽기(store 내부 원시 — services 만 호출) ──────────────
 export const rawZones = (): Zone[] => zones
 export const rawAssignments = (): StoredAssignment[] => assignments
