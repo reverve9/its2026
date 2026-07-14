@@ -1,5 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { OPS_INFO } from '../../lib/services'
+import { useNowMin } from '../../lib/useLive'
+import { fmtHM } from '../../lib/clock'
 
 type NavItem = { to: string; label: string; end?: boolean }
 const groups: { title: string; items: NavItem[] }[] = [
@@ -29,6 +31,7 @@ const groups: { title: string; items: NavItem[] }[] = [
 ]
 
 export default function ConsoleLayout() {
+  const now = useNowMin()
   return (
     <div className="flex h-full">
       {/* 사이드바 */}
@@ -88,8 +91,8 @@ export default function ConsoleLayout() {
           </div>
           <div className="flex items-center gap-4">
             <div className="text-right">
-              <div className="tnum text-section font-bold text-ink-strong">14:20</div>
-              <div className="text-caption text-ink-muted">현재 시각</div>
+              <div className="tnum text-section font-bold text-ink-strong">{fmtHM(now)}</div>
+              <div className="text-caption text-ink-muted">현재 시각 · {now < 14 * 60 ? '오전조' : '오후조'}</div>
             </div>
             <div className="grid h-9 w-9 place-items-center rounded-full bg-primary-50 text-body font-bold text-primary-600">
               관제

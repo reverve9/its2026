@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
-import { getAssignment, getDutyLog, getZones } from '../../../lib/services'
-import type { Assignment, DutyLogEntry, CheckState } from '../../../types'
+import { useEffect } from 'react'
+import { getAssignment, getDutyLog, getZones, getShiftSlots } from '../../../lib/services'
+import { useLive, useNowMin } from '../../../lib/useLive'
+import type { CheckState } from '../../../types'
 import { Section } from '../../../components/layout'
 import { StatusBadge, statusMeta } from '../../../components/ui'
-import { NOW, SLOTS, fmtDur, workBreak } from '../../../lib/time'
+import { fmtHM } from '../../../lib/clock'
+import { toMin, fmtDur, workBreak } from '../../../lib/time'
 
 const telHref = (p: string) => `tel:${p.replace(/-/g, '')}`
 
@@ -13,6 +15,7 @@ const slotMeta: Record<CheckState, { label: string; cls: string }> = {
   missed: { label: '누락', cls: 'bg-critical-soft text-critical' },
   absent: { label: '미출근', cls: 'bg-neutral-100 text-ink-faint' },
 }
+const pendingMeta = { label: '예정', cls: 'bg-neutral-50 text-ink-faint ring-1 ring-inset ring-line' }
 
 function InfoTile({ label, value, tone = 'default' }: { label: string; value: string; tone?: 'default' | 'primary' | 'critical' }) {
   const cls = tone === 'primary' ? 'text-primary-600' : tone === 'critical' ? 'text-critical' : 'text-ink-strong'
@@ -25,29 +28,10 @@ function InfoTile({ label, value, tone = 'default' }: { label: string; value: st
 }
 
 export default function PersonDetailModal({ id, onClose }: { id: string; onClose: () => void }) {
-  const [a, setA] = useState<Assignment | undefined>(undefined)
-  const [log, setLog] = useState<DutyLogEntry[]>([])
-  const [zoneName, setZoneName] = useState('')
-  const [loaded, setLoaded] = useState(false)
-
-  useEffect(() => {
-    let alive = true
-    Promise.all([getAssignment(id), getDutyLog(id), getZones()]).then(([asg, l, zones]) => {
-      if (!alive) return
-      setA(asg)
-      const synth: DutyLogEntry[] =
-        l.length > 0
-          ? l
-          : asg?.checkedInAt
-            ? [{ time: asg.checkedInAt, label: '출근 체크인', status: 'on', via: 'scan' }]
-            : []
-      setLog(synth)
-      setZoneName(asg?.isReserve ? '예비 · 미배정' : zones.find((z) => z.id === asg?.zoneId)?.name ?? '—')
-      setLoaded(true)
-    })
-    return () => {
-      alive = false
-    }
+  const now = useNowMin()
+  const data = useLive(async () => {
+    const [asg, log, zones] = await Promise.all([getAssignment(id), getDutyLog(id), getZones()])
+    return { asg, log, zones }
   }, [id])
 
   useEffect(() => {
@@ -56,10 +40,18 @@ export default function PersonDetailModal({ id, onClose }: { id: string; onClose
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const { work, brk } = workBreak(log)
+  const a = data?.asg
+  const log = data?.log ?? []
+  const zoneName = a?.isReserve ? '예비 · 미배정' : data?.zones.find((z) => z.id === a?.zoneId)?.name ?? '—'
+
   const absent = a?.status === 'absent'
+  const endMin = a?.checkedOutAt ? toMin(a.checkedOutAt) : now
+  const { work, brk } = workBreak(log, endMin)
+  const slots = a ? getShiftSlots(a.shift) : []
   const okCount = a?.checks.filter((c) => c === 'ok').length ?? 0
+  const dueCount = a?.checks.length ?? 0
   const missed = a?.checks.some((c) => c === 'missed') ?? false
+  const shiftKo = a?.shift === 'AM' ? '오전조' : '오후조'
 
   return (
     <div
@@ -70,7 +62,7 @@ export default function PersonDetailModal({ id, onClose }: { id: string; onClose
         className="flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
-        {!loaded || !a ? (
+        {!data || !a ? (
           <div className="grid h-40 place-items-center text-label text-ink-muted">불러오는 중…</div>
         ) : (
           <>
@@ -79,7 +71,7 @@ export default function PersonDetailModal({ id, onClose }: { id: string; onClose
               <div>
                 <div className="font-title text-title font-medium text-ink-strong">{a.personName}</div>
                 <div className="mt-0.5 text-label text-ink-muted">
-                  {a.role} · {zoneName}
+                  {shiftKo} · {a.role} · {zoneName}
                   {a.isReserve ? ' · 투입 대기' : ''}
                 </div>
               </div>
@@ -113,17 +105,17 @@ export default function PersonDetailModal({ id, onClose }: { id: string; onClose
               {!a.isReserve && (
                 <div className="mt-5">
                   <Section
-                    title="정시(1h) 체크"
+                    title={`정시(1h) 체크 · ${shiftKo}`}
                     right={
                       <span className={`text-caption font-semibold ${missed ? 'text-critical' : 'text-ok'}`}>
-                        {missed ? '확인 필요' : `정상 ${okCount}/${a.checks.length}`}
+                        {missed ? '확인 필요' : dueCount ? `정상 ${okCount}/${dueCount}` : '대기'}
                       </span>
                     }
                   >
                     <div className="flex flex-wrap gap-2">
-                      {SLOTS.map((slot, i) => {
-                        const st = a.checks[i] ?? 'absent'
-                        const m = slotMeta[st]
+                      {slots.map((slot, i) => {
+                        const st = a.checks[i]
+                        const m = st ? slotMeta[st] : pendingMeta
                         return (
                           <div key={slot} className="flex flex-col items-center gap-1">
                             <span className="tnum text-caption text-ink-muted">{slot}</span>
@@ -142,11 +134,11 @@ export default function PersonDetailModal({ id, onClose }: { id: string; onClose
               )}
 
               <div className="mt-5">
-                <Section title="오늘 근퇴 타임라인" right={<span className="text-caption text-ink-muted">기준 {NOW}</span>}>
+                <Section title="오늘 근퇴 타임라인" right={<span className="text-caption text-ink-muted">기준 {fmtHM(now)}</span>}>
                   {absent ? (
                     <div className="py-6 text-center">
                       <div className="text-body font-semibold text-critical">미출근</div>
-                      <p className="mt-1 text-label text-ink-muted">배정시간 10:00 경과 · 예비인력 대체 배치 권고</p>
+                      <p className="mt-1 text-label text-ink-muted">배정시간 {fmtHM(a.shift === 'AM' ? 600 : 840)} 경과 · 예비인력 대체 배치 권고</p>
                     </div>
                   ) : (
                     <ol className="relative ml-1">
@@ -173,10 +165,12 @@ export default function PersonDetailModal({ id, onClose }: { id: string; onClose
                         )
                       })}
                       <li className="relative flex gap-3">
-                        <span className="mt-1 h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-ok ring-2 ring-white" />
+                        <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${a.status === 'off' ? 'bg-ink-faint' : 'animate-pulse bg-ok'} ring-2 ring-white`} />
                         <div className="flex items-baseline gap-2">
-                          <span className="tnum text-label font-bold text-ink-muted">{NOW}</span>
-                          <span className="text-label text-ink-muted">현재 — {statusMeta[a.status].label} 지속 중</span>
+                          <span className="tnum text-label font-bold text-ink-muted">{fmtHM(now)}</span>
+                          <span className="text-label text-ink-muted">
+                            현재 — {statusMeta[a.status].label}{a.status === 'off' ? ' (오전조 근무 종료)' : ' 지속 중'}
+                          </span>
                         </div>
                       </li>
                     </ol>

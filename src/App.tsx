@@ -4,6 +4,7 @@ import FieldLayout from './surfaces/field/FieldLayout'
 import Dashboard from './surfaces/console/pages/Dashboard'
 import People from './surfaces/console/pages/People'
 import Placeholder from './components/Placeholder'
+import TimeScrubber from './components/TimeScrubber'
 
 // 캡쳐/데모 편의용 서피스 전환기 — 최종 캡쳐 시 제거 가능(dev aid)
 function SurfaceSwitcher() {
@@ -68,6 +69,7 @@ export default function App() {
         {/* 현장 모바일 PWA — 역할 분기(봉사자 / 거점관리자) */}
         <Route path="/f" element={<FieldLayout />} />
       </Routes>
+      <TimeScrubber />
       <SurfaceSwitcher />
     </BrowserRouter>
   )
