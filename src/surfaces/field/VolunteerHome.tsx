@@ -1,0 +1,194 @@
+import { useState } from 'react'
+import { getAssignment, getZone, checkIn, hourlyCheck, reportIssue, shiftSlotMins, shiftLabel } from '../../lib/services'
+import { useLive, useNowMin } from '../../lib/useLive'
+import { getNowMin, fmtHM } from '../../lib/clock'
+import { checkGeofence } from '../../lib/geo'
+import { toMin, fmtDur } from '../../lib/time'
+import { StatusBadge } from '../../components/ui'
+import type { FieldSession } from '../../lib/session'
+
+type GpsState = { status: 'idle' | 'locating' | 'done' | 'error'; msg?: string }
+
+export default function VolunteerHome({ session, onLogout }: { session: FieldSession; onLogout: () => void }) {
+  const now = useNowMin()
+  const a = useLive(() => getAssignment(session.assignmentId), [session.assignmentId])
+  const zone = useLive(() => (a?.zoneId ? getZone(a.zoneId) : Promise.resolve(undefined)), [a?.zoneId])
+  const [gps, setGps] = useState<GpsState>({ status: 'idle' })
+  const [sosSent, setSosSent] = useState(false)
+
+  if (!a) return <div className="grid h-full place-items-center text-label text-ink-muted">불러오는 중…</div>
+
+  const checkedIn = !!a.checkedInAt
+  const isGpsZone = zone?.checkMode === 'self_gps'
+  const workedMin = a.checkedInAt ? (a.checkedOutAt ? toMin(a.checkedOutAt) : now) - toMin(a.checkedInAt) : 0
+
+  // 현재 정시(1h) 슬롯 — 조 슬롯 중 지난 마지막.
+  const slots = shiftSlotMins(a.shift)
+  const dueIdx = slots.reduce((acc, s, i) => (s <= now ? i : acc), -1)
+  const currentSlot = dueIdx >= 0 ? slots[dueIdx] : null
+  const slotDone = dueIdx >= 0 && (a.checks[dueIdx] === 'ok' || a.checks[dueIdx] === 'break')
+
+  const doGpsCheckIn = () => {
+    if (!('geolocation' in navigator)) {
+      setGps({ status: 'error', msg: '이 기기는 위치 확인을 지원하지 않습니다.' })
+      return
+    }
+    setGps({ status: 'locating', msg: '위치 확인 중…' })
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const here = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+        const g = zone ? checkGeofence(here, zone.coords, zone.geofenceRadius) : { within: true, distance: 0, anomaly: undefined }
+        await checkIn(a.id, {
+          method: 'GPS', gps: here, ts: getNowMin(),
+          idempotencyKey: `field:${a.id}:checkin:${a.date}:${a.shift}`, anomaly: g.anomaly,
+        })
+        setGps({ status: 'done', msg: g.within ? `거점 반경 내 확인 (${g.distance}m)` : g.anomaly })
+      },
+      (err) => setGps({
+        status: 'error',
+        msg: err.code === err.PERMISSION_DENIED ? '위치 권한이 거부되었습니다. 브라우저 권한을 허용해 주세요.' : '위치를 가져오지 못했습니다. 다시 시도해 주세요.',
+      }),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    )
+  }
+
+  const doHourly = async () => {
+    if (currentSlot === null) return
+    await hourlyCheck(a.id, {
+      slot: currentSlot, ts: getNowMin(),
+      idempotencyKey: `field:${a.id}:hourly:${a.date}:${currentSlot}`,
+    })
+  }
+
+  const doSos = async () => {
+    if (!a.zoneId) return
+    await reportIssue({
+      type: '안전사고', zoneId: a.zoneId, note: `[SOS] ${a.personName} 긴급 지원요청`,
+      ts: getNowMin(), idempotencyKey: `field:${a.id}:sos:${getNowMin()}`,
+    })
+    setSosSent(true)
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* 헤더 */}
+      <header className="bg-primary-700 px-5 pb-4 pt-8 text-white">
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="font-latin text-[10px] font-semibold uppercase tracking-[0.18em] text-primary-200/70">ITS 2026 · Field</div>
+            <div className="mt-1 font-title text-title font-medium leading-tight">{a.personName}</div>
+            <div className="mt-0.5 text-label text-primary-200/80">{shiftLabel(a.shift)} · {zone?.name ?? '—'}</div>
+          </div>
+          <button onClick={onLogout} className="rounded-lg bg-white/10 px-2.5 py-1 text-caption font-semibold text-white/90 transition hover:bg-white/20">
+            로그아웃
+          </button>
+        </div>
+      </header>
+
+      <div className="flex-1 space-y-4 overflow-auto bg-page p-4">
+        {/* 근무 카드 */}
+        <div className="card p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-label font-semibold text-ink-muted">오늘 내 근무</span>
+            <StatusBadge status={a.status} />
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-lg bg-page py-2">
+              <div className="text-caption text-ink-faint">체크인</div>
+              <div className="tnum mt-0.5 text-body font-bold text-ink-strong">{a.checkedInAt ?? '—'}</div>
+            </div>
+            <div className="rounded-lg bg-page py-2">
+              <div className="text-caption text-ink-faint">누적 활동</div>
+              <div className="tnum mt-0.5 text-body font-bold text-primary-600">{checkedIn ? fmtDur(workedMin) : '—'}</div>
+            </div>
+            <div className="rounded-lg bg-page py-2">
+              <div className="text-caption text-ink-faint">현재</div>
+              <div className="tnum mt-0.5 text-body font-bold text-ink-strong">{fmtHM(now)}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* 체크인 */}
+        {!checkedIn ? (
+          isGpsZone ? (
+            <div className="card p-4">
+              <div className="text-label font-semibold text-ink-strong">GPS 원버튼 체크인</div>
+              <p className="mt-1 text-caption text-ink-muted">무인 거점 — 거점 반경 안에서 버튼을 누르면 위치로 출근 확인됩니다.</p>
+              <button
+                onClick={doGpsCheckIn}
+                disabled={gps.status === 'locating'}
+                className="mt-3 w-full rounded-xl bg-primary-600 py-4 text-body font-bold text-white transition hover:bg-primary-700 disabled:opacity-50"
+              >
+                {gps.status === 'locating' ? '위치 확인 중…' : '📍 GPS 체크인'}
+              </button>
+              {gps.msg && (
+                <p className={`mt-2 text-caption ${gps.status === 'error' ? 'text-critical' : 'text-ok'}`}>{gps.msg}</p>
+              )}
+            </div>
+          ) : (
+            <div className="card p-4">
+              <div className="text-label font-semibold text-ink-strong">QR 체크인 (유인 거점)</div>
+              <p className="mt-1 text-caption text-ink-muted">행사장 거점 — 거점관리자에게 아래 코드를 제시하면 스캔으로 출근 확인됩니다.</p>
+              <div className="mt-3 grid place-items-center rounded-xl border border-line bg-page py-6">
+                <div className="grid h-28 w-28 place-items-center rounded-lg bg-ink-strong text-caption font-bold text-white">QR</div>
+                <div className="tnum mt-2 text-caption text-ink-muted">{a.id}</div>
+              </div>
+              <p className="mt-2 text-caption text-ink-faint">※ QR 코드 렌더는 다음 단계에서 실제 코드로 교체.</p>
+            </div>
+          )
+        ) : (
+          <div className="card p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-label font-semibold text-ink-strong">정시(1h) 체크</span>
+              <span className="text-caption text-ink-muted">{shiftLabel(a.shift)} · {fmtHM(now)}</span>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {slots.map((s, i) => {
+                const st = a.checks[i]
+                const cls = !st ? 'bg-neutral-50 text-ink-faint ring-1 ring-inset ring-line'
+                  : st === 'ok' ? 'bg-ok-soft text-ok' : st === 'break' ? 'bg-warn-soft text-warn'
+                  : st === 'missed' ? 'bg-critical-soft text-critical' : 'bg-neutral-100 text-ink-faint'
+                return (
+                  <div key={s} className="flex flex-col items-center gap-1">
+                    <span className="tnum text-caption text-ink-muted">{fmtHM(s)}</span>
+                    <span className={`rounded-md px-2.5 py-1 text-caption font-semibold ${cls}`}>
+                      {!st ? '예정' : st === 'ok' ? '완료' : st === 'break' ? '휴게' : st === 'missed' ? '누락' : '—'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            <button
+              onClick={doHourly}
+              disabled={currentSlot === null || slotDone}
+              className="mt-3 w-full rounded-xl bg-primary-600 py-3.5 text-body font-semibold text-white transition hover:bg-primary-700 disabled:opacity-40"
+            >
+              {currentSlot === null ? '체크 시간대 아님' : slotDone ? `${fmtHM(currentSlot)} 체크 완료` : `${fmtHM(currentSlot)} 정시 체크하기`}
+            </button>
+          </div>
+        )}
+
+        {/* 안내 · SOS */}
+        <div className="card p-4">
+          <div className="text-label font-semibold text-ink-strong">거점 안내 · 비상</div>
+          <div className="mt-2 space-y-1.5 text-caption text-ink-muted">
+            <div>· 운영시간 {zone?.opWindow.start}–{zone?.opWindow.end}</div>
+            <div>· 비상연락망 · 셔틀·관광 안내는 다음 단계에서 연결</div>
+          </div>
+          {sosSent ? (
+            <div className="mt-3 rounded-xl bg-critical-soft px-3 py-2.5 text-label font-semibold text-critical">
+              SOS 전송됨 — 운영본부가 확인 중입니다.
+            </div>
+          ) : (
+            <button
+              onClick={doSos}
+              className="mt-3 w-full rounded-xl border-2 border-critical bg-critical-soft py-3 text-body font-bold text-critical transition hover:bg-critical/10"
+            >
+              🆘 SOS 긴급 지원요청
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

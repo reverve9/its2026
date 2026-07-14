@@ -53,6 +53,8 @@ export const shiftLabel = (s: Shift): string => (s === 'AM' ? '오전조' : '오
 export function getShiftSlots(s: Shift): string[] {
   return SLOTS[s].map(fmtHM)
 }
+export const shiftSlotMins = (s: Shift): number[] => SLOTS[s]
+export const shiftWindow = (s: Shift) => WIN[s]
 
 // ── 파생 헬퍼 ───────────────────────────────────────────
 const eventsOf = (id: string): StoredEvent[] => rawEvents().filter((e) => e.assignmentId === id)
@@ -136,6 +138,40 @@ export async function getAssignment(id: string): Promise<Assignment | undefined>
 }
 export async function getReserves(): Promise<Assignment[]> {
   return roster(getNowMin()).filter((a) => a.isReserve)
+}
+export async function getZone(id: string): Promise<Zone | undefined> {
+  return (await getZones()).find((z) => z.id === id)
+}
+
+// ── 현장앱 신원확인(저마찰) — 전번+성명 조회. 백엔드 인증 아님(R1 경유). ──
+const digitsOnly = (s: string) => s.replace(/\D/g, '')
+export async function findVolunteer(phone: string, name: string): Promise<Assignment | undefined> {
+  const d = digitsOnly(phone)
+  const nm = name.trim()
+  const a = rawAssignments().find((x) => digitsOnly(x.phone) === d && x.personName === nm)
+  return a ? derive(a, getNowMin()) : undefined
+}
+
+// dev 편의 — 실제 눌러보기용 유효 계정 몇 개(현장앱 신원확인 quick-pick).
+export interface SampleLogin {
+  name: string
+  phone: string
+  role: string
+  shift: Shift
+  zoneName: string
+}
+export async function getSampleLogins(): Promise<SampleLogin[]> {
+  const pick = (pred: (a: StoredAssignment) => boolean) => rawAssignments().find(pred)
+  const raws = [
+    pick((a) => a.role === '거점관리자' && a.shift === 'PM'), // 유인 거점관리자
+    pick((a) => !a.isReserve && a.shift === 'PM' && zoneOf(a.zoneId)?.kind === 'tourist'), // 무인 봉사자
+    pick((a) => !a.isReserve && a.shift === 'PM' && zoneOf(a.zoneId)?.kind === 'venue' && a.role === '봉사자'),
+    pick((a) => a.shift === 'AM' && a.role === '봉사자'), // 오전조(퇴근 상태 확인용)
+  ].filter((a): a is StoredAssignment => !!a)
+  return raws.map((a) => ({
+    name: a.personName, phone: a.phone, role: a.role, shift: a.shift,
+    zoneName: zoneOf(a.zoneId)?.name ?? '—',
+  }))
 }
 
 // 개인 근퇴 타임라인 — 이벤트 + 휴게/이동 구간에서 파생.
@@ -308,11 +344,11 @@ const toCheckMethod = (m: CheckInMethod): CheckMethod => (m === 'QR' ? 'scan' : 
 
 export async function checkIn(
   assignmentId: string,
-  opts: { method: CheckInMethod; gps?: Coords; ts: number; idempotencyKey: string }
+  opts: { method: CheckInMethod; gps?: Coords; ts: number; idempotencyKey: string; anomaly?: string }
 ): Promise<boolean> {
   return addEvent({
     idempotencyKey: opts.idempotencyKey, assignmentId, kind: 'checkin',
-    timeMin: opts.ts, method: toCheckMethod(opts.method), gps: opts.gps,
+    timeMin: opts.ts, method: toCheckMethod(opts.method), gps: opts.gps, anomaly: opts.anomaly,
   })
 }
 
