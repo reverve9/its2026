@@ -21,11 +21,12 @@ export default function TimeScrubber() {
   const now = useNowMin()
   const shift = now < 14 * 60 ? '오전조' : '오후조'
 
-  // 현장앱(/f)에선 숨김 — 콘솔 관제 전용 dev 컨트롤.
-  if (pathname.startsWith('/f')) return null
+  // 현장앱(/f)에선 헤더를 가리지 않도록 하단으로(서피스 스위처 위). 콘솔은 상단.
+  const isField = pathname.startsWith('/f')
+  const posCls = isField ? 'bottom-16' : 'top-3'
 
   return (
-    <div className="fixed left-1/2 top-3 z-[60] w-[min(720px,92vw)] -translate-x-1/2 rounded-xl border border-line bg-white/95 px-4 py-2.5 shadow-lg backdrop-blur">
+    <div className={`fixed left-1/2 z-[60] w-[min(720px,92vw)] -translate-x-1/2 rounded-xl border border-line bg-white/95 px-4 py-2.5 shadow-lg backdrop-blur ${posCls}`}>
       <div className="flex items-center gap-3">
         <span className="shrink-0 rounded-md bg-neutral-900 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
           DEV
