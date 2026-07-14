@@ -5,6 +5,7 @@ import { getNowMin, fmtHM } from '../../lib/clock'
 import { checkGeofence } from '../../lib/geo'
 import { toMin, fmtDur } from '../../lib/time'
 import { StatusBadge } from '../../components/ui'
+import { QrCode } from '../../components/QrCode'
 import type { FieldSession } from '../../lib/session'
 
 type GpsState = { status: 'idle' | 'locating' | 'done' | 'error'; msg?: string }
@@ -129,11 +130,10 @@ export default function VolunteerHome({ session, onLogout }: { session: FieldSes
             <div className="card p-4">
               <div className="text-label font-semibold text-ink-strong">QR 체크인 (유인 거점)</div>
               <p className="mt-1 text-caption text-ink-muted">행사장 거점 — 거점관리자에게 아래 코드를 제시하면 스캔으로 출근 확인됩니다.</p>
-              <div className="mt-3 grid place-items-center rounded-xl border border-line bg-page py-6">
-                <div className="grid h-28 w-28 place-items-center rounded-lg bg-ink-strong text-caption font-bold text-white">QR</div>
+              <div className="mt-3 grid place-items-center rounded-xl border border-line bg-white py-6">
+                <QrCode value={a.id} size={176} />
                 <div className="tnum mt-2 text-caption text-ink-muted">{a.id}</div>
               </div>
-              <p className="mt-2 text-caption text-ink-faint">※ QR 코드 렌더는 다음 단계에서 실제 코드로 교체.</p>
             </div>
           )
         ) : (

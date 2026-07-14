@@ -1,10 +1,13 @@
-import { useState } from 'react'
-import { getAssignment, getZone, getAssignments, reportIssue, shiftLabel } from '../../lib/services'
+import { lazy, Suspense, useState } from 'react'
+import { getAssignment, getZone, getAssignments, reportIssue, checkIn, shiftLabel } from '../../lib/services'
 import { useLive, useNowMin } from '../../lib/useLive'
 import { getNowMin, fmtHM } from '../../lib/clock'
 import { StatusBadge, Fill } from '../../components/ui'
 import type { FieldSession } from '../../lib/session'
 import type { IssueType } from '../../types'
+
+// QR 스캐너(html5-qrcode ~400KB)는 열 때만 로드 — 메인 번들 경량 유지.
+const QrScanner = lazy(() => import('../../components/QrScanner'))
 
 const ISSUE_TYPES: IssueType[] = ['민원', '시설이상', '분실물', '미아', '안전사고']
 
@@ -17,6 +20,22 @@ export default function ManagerHome({ session, onLogout }: { session: FieldSessi
   const [itype, setItype] = useState<IssueType>('시설이상')
   const [note, setNote] = useState('')
   const [sent, setSent] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const [scanResult, setScanResult] = useState<{ ok: boolean; msg: string } | null>(null)
+
+  const onDecode = async (text: string) => {
+    setScanning(false)
+    const target = await getAssignment(text.trim())
+    if (!target) {
+      setScanResult({ ok: false, msg: `등록되지 않은 코드: ${text}` })
+      return
+    }
+    await checkIn(target.id, {
+      method: 'QR', ts: getNowMin(),
+      idempotencyKey: `field:${target.id}:checkin:${target.date}:${target.shift}`,
+    })
+    setScanResult({ ok: true, msg: `${target.personName} 출근 확인 (${shiftLabel(target.shift)})` })
+  }
 
   if (!me || !zone) return <div className="grid h-full place-items-center text-label text-ink-muted">불러오는 중…</div>
 
@@ -100,13 +119,21 @@ export default function ManagerHome({ session, onLogout }: { session: FieldSessi
 
         {/* 액션 */}
         <div className="grid grid-cols-2 gap-3">
-          <button disabled className="rounded-xl border border-line bg-neutral-50 py-3 text-label font-semibold text-ink-faint">
-            📷 QR 스캔<div className="text-caption font-normal">다음 단계</div>
+          <button
+            onClick={() => { setScanResult(null); setScanning(true) }}
+            className="rounded-xl bg-primary-600 py-3 text-label font-semibold text-white transition hover:bg-primary-700"
+          >
+            📷 QR 스캔<div className="text-caption font-normal text-primary-100">봉사자 출결</div>
           </button>
           <button disabled className="rounded-xl border border-line bg-neutral-50 py-3 text-label font-semibold text-ink-faint">
             🔍 순회 감사<div className="text-caption font-normal">다음 단계</div>
           </button>
         </div>
+        {scanResult && (
+          <div className={`rounded-xl px-3 py-2.5 text-label font-semibold ${scanResult.ok ? 'bg-ok-soft text-ok' : 'bg-critical-soft text-critical'}`}>
+            {scanResult.ok ? '✓ ' : '✕ '}{scanResult.msg}
+          </div>
+        )}
 
         {/* 이슈 보고 */}
         <div className="card p-4">
@@ -139,6 +166,12 @@ export default function ManagerHome({ session, onLogout }: { session: FieldSessi
           {sent && <p className="mt-2 text-caption text-ok">접수됨 — 운영본부 대장에 반영되었습니다.</p>}
         </div>
       </div>
+
+      {scanning && (
+        <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-ink-strong/95 text-white">카메라 준비 중…</div>}>
+          <QrScanner onDecode={onDecode} onClose={() => setScanning(false)} />
+        </Suspense>
+      )}
     </div>
   )
 }
