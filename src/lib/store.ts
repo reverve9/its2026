@@ -33,7 +33,7 @@ export interface StoredAssignment {
   goods?: GoodsIssue // 활동물품 지급 현황(마스터)
 }
 
-export type EventKind = 'checkin' | 'checkout' | 'hourly'
+export type EventKind = 'checkin' | 'checkout' | 'hourly' | 'audit'
 export interface StoredEvent {
   id: string
   idempotencyKey: string

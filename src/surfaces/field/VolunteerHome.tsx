@@ -6,7 +6,10 @@ import { checkGeofence } from '../../lib/geo'
 import { toMin, fmtDur } from '../../lib/time'
 import { StatusBadge } from '../../components/ui'
 import { QrCode } from '../../components/QrCode'
+import { EMERGENCY_CONTACTS, SHUTTLE_INFO } from '../../lib/info'
 import type { FieldSession } from '../../lib/session'
+
+const telHref = (p: string) => `tel:${p.replace(/-/g, '')}`
 
 type GpsState = { status: 'idle' | 'locating' | 'done' | 'error'; msg?: string }
 
@@ -168,13 +171,36 @@ export default function VolunteerHome({ session, onLogout }: { session: FieldSes
           </div>
         )}
 
-        {/* 안내 · SOS */}
+        {/* 거점 안내 */}
         <div className="card p-4">
-          <div className="text-label font-semibold text-ink-strong">거점 안내 · 비상</div>
-          <div className="mt-2 space-y-1.5 text-caption text-ink-muted">
-            <div>· 운영시간 {zone?.opWindow.start}–{zone?.opWindow.end}</div>
-            <div>· 비상연락망 · 셔틀·관광 안내는 다음 단계에서 연결</div>
+          <div className="text-label font-semibold text-ink-strong">거점 안내</div>
+          <div className="mt-1 text-caption text-ink-muted">운영시간 {zone?.opWindow.start}–{zone?.opWindow.end}</div>
+          <div className="mt-3 space-y-1">
+            {SHUTTLE_INFO.lines.map((l, i) => (
+              <div key={i} className="text-caption leading-snug text-ink-base">· {l}</div>
+            ))}
           </div>
+        </div>
+
+        {/* 비상연락망 */}
+        <div className="card p-4">
+          <div className="text-label font-semibold text-ink-strong">비상연락망</div>
+          <div className="mt-2 divide-y divide-line-soft">
+            {EMERGENCY_CONTACTS.map((c) => (
+              <a key={c.phone} href={telHref(c.phone)} className="flex items-center gap-2 py-2">
+                <div className="min-w-0 flex-1">
+                  <div className="text-label font-semibold text-ink-strong">{c.label}</div>
+                  {c.note && <div className="text-caption text-ink-muted">{c.note}</div>}
+                </div>
+                <span className="tnum shrink-0 rounded-lg bg-primary-50 px-2.5 py-1 text-caption font-semibold text-primary-700">{c.phone}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+
+        {/* SOS */}
+        <div className="card p-4">
+          <div className="text-label font-semibold text-ink-strong">긴급</div>
           {sosSent ? (
             <div className="mt-3 rounded-xl bg-critical-soft px-3 py-2.5 text-label font-semibold text-critical">
               SOS 전송됨 — 운영본부가 확인 중입니다.

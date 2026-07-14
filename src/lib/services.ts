@@ -186,6 +186,8 @@ export async function getDutyLog(id: string): Promise<DutyLogEntry[]> {
       entries.push({ time: fmtHM(e.timeMin), label: '출근 체크인', status: 'on', via: e.method, note: e.anomaly })
     else if (e.kind === 'checkout')
       entries.push({ time: fmtHM(e.timeMin), label: '퇴근', status: 'off', via: e.method })
+    else if (e.kind === 'audit')
+      entries.push({ time: fmtHM(e.timeMin), label: e.anomaly ? '순회 감사 — 불일치' : '순회 감사 — 정위치 확인', status: 'on', note: e.anomaly })
     else
       entries.push({ time: fmtHM(e.timeMin), label: `정시(1h) 체크 ${fmtHM(e.slot ?? e.timeMin)}`, status: 'on', via: e.method })
   }
@@ -383,6 +385,33 @@ export async function assignReserve(alertId: string, reserveAssignmentId: string
     assignmentId: reserveAssignmentId, kind: 'checkin', timeMin: now, method,
   })
   return true
+}
+
+// 순회 랜덤감사 — 무인(관광지) 거점 셀프체크 무결성의 3번째 층(핸드오프 §3).
+// 대상 후보 = 현재 근무 중인 무인 거점 인력.
+export async function getPatrolCandidates(): Promise<Assignment[]> {
+  const now = getNowMin()
+  return roster(now).filter(
+    (a) => !a.isReserve && isPresent(a.status) && zoneOf(a.zoneId)?.checkMode === 'self_gps'
+  )
+}
+
+// 감사 결과 기록. mismatch(불일치)면 audit 이벤트에 사유 + 운영본부 이슈 접수.
+export async function recordPatrolAudit(
+  assignmentId: string,
+  opts: { result: 'ok' | 'mismatch'; ts: number; idempotencyKey: string }
+): Promise<boolean> {
+  const anomaly = opts.result === 'mismatch' ? '순회감사 불일치 — 위치·본인 확인 필요' : undefined
+  const ok = addEvent({ idempotencyKey: opts.idempotencyKey, assignmentId, kind: 'audit', timeMin: opts.ts, anomaly })
+  if (opts.result === 'mismatch') {
+    const a = findAssignment(assignmentId)
+    addIssue({
+      idempotencyKey: `${opts.idempotencyKey}:issue`, type: '안전사고',
+      zoneId: a?.zoneId ?? '', status: 'received', time: fmtHM(opts.ts),
+      message: `순회감사 불일치 — ${a?.personName ?? assignmentId} 위치·본인 확인 필요`,
+    })
+  }
+  return ok
 }
 
 export async function reportIssue(input: {

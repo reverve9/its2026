@@ -1,10 +1,10 @@
 import { lazy, Suspense, useState } from 'react'
-import { getAssignment, getZone, getAssignments, reportIssue, checkIn, shiftLabel } from '../../lib/services'
+import { getAssignment, getZone, getZones, getAssignments, reportIssue, checkIn, getPatrolCandidates, recordPatrolAudit, shiftLabel } from '../../lib/services'
 import { useLive, useNowMin } from '../../lib/useLive'
 import { getNowMin, fmtHM } from '../../lib/clock'
 import { StatusBadge, Fill } from '../../components/ui'
 import type { FieldSession } from '../../lib/session'
-import type { IssueType } from '../../types'
+import type { Assignment, IssueType } from '../../types'
 
 // QR 스캐너(html5-qrcode ~400KB)는 열 때만 로드 — 메인 번들 경량 유지.
 const QrScanner = lazy(() => import('../../components/QrScanner'))
@@ -16,12 +16,30 @@ export default function ManagerHome({ session, onLogout }: { session: FieldSessi
   const me = useLive(() => getAssignment(session.assignmentId), [session.assignmentId])
   const zone = useLive(() => (me?.zoneId ? getZone(me.zoneId) : Promise.resolve(undefined)), [me?.zoneId])
   const all = useLive(getAssignments) ?? []
+  const zones = useLive(getZones) ?? []
+  const zoneName = (id: string | null) => zones.find((z) => z.id === id)?.name ?? '—'
 
   const [itype, setItype] = useState<IssueType>('시설이상')
   const [note, setNote] = useState('')
   const [sent, setSent] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [scanResult, setScanResult] = useState<{ ok: boolean; msg: string } | null>(null)
+  const [patrol, setPatrol] = useState<{ target: Assignment; done?: 'ok' | 'mismatch' } | null>(null)
+
+  const openPatrol = async () => {
+    const cands = await getPatrolCandidates()
+    if (!cands.length) { setScanResult({ ok: false, msg: '순회 대상(무인 거점 근무자)이 없습니다' }); return }
+    // 랜덤 1인 추출 — 셀프체크 무결성 확인
+    const pick = cands[Math.floor(Math.random() * cands.length)]
+    setPatrol({ target: pick })
+  }
+  const doAudit = async (result: 'ok' | 'mismatch') => {
+    if (!patrol) return
+    await recordPatrolAudit(patrol.target.id, {
+      result, ts: getNowMin(), idempotencyKey: `field:${session.assignmentId}:patrol:${patrol.target.id}:${getNowMin()}`,
+    })
+    setPatrol({ ...patrol, done: result })
+  }
 
   const onDecode = async (text: string) => {
     setScanning(false)
@@ -125,8 +143,11 @@ export default function ManagerHome({ session, onLogout }: { session: FieldSessi
           >
             📷 QR 스캔<div className="text-caption font-normal text-primary-100">봉사자 출결</div>
           </button>
-          <button disabled className="rounded-xl border border-line bg-neutral-50 py-3 text-label font-semibold text-ink-faint">
-            🔍 순회 감사<div className="text-caption font-normal">다음 단계</div>
+          <button
+            onClick={openPatrol}
+            className="rounded-xl border border-primary-200 bg-primary-50 py-3 text-label font-semibold text-primary-700 transition hover:bg-primary-100"
+          >
+            🔍 순회 감사<div className="text-caption font-normal text-primary-600/70">무인 거점 랜덤 대조</div>
           </button>
         </div>
         {scanResult && (
@@ -171,6 +192,43 @@ export default function ManagerHome({ session, onLogout }: { session: FieldSessi
         <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-ink-strong/95 text-white">카메라 준비 중…</div>}>
           <QrScanner onDecode={onDecode} onClose={() => setScanning(false)} />
         </Suspense>
+      )}
+
+      {/* 순회 랜덤감사 모달 */}
+      {patrol && (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-ink-strong/50 p-4" onClick={() => setPatrol(null)}>
+          <div className="w-full max-w-[420px] rounded-2xl bg-surface p-5 shadow-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <span className="font-title text-body font-semibold text-ink-strong">순회 랜덤감사</span>
+              <button onClick={() => setPatrol(null)} className="text-ink-muted" aria-label="닫기">✕</button>
+            </div>
+            <p className="mt-1 text-caption text-ink-muted">무인 거점 셀프체크 무결성 — 랜덤 대상 현장 대조</p>
+
+            <div className="mt-3 rounded-xl border border-line bg-page p-3.5">
+              <div className="flex items-center justify-between">
+                <span className="text-title font-medium text-ink-strong">{patrol.target.personName}</span>
+                <StatusBadge status={patrol.target.status} />
+              </div>
+              <div className="mt-1 text-label text-ink-muted">{zoneName(patrol.target.zoneId)} · {shiftLabel(patrol.target.shift)}</div>
+              <div className="mt-2 flex gap-4 text-caption text-ink-muted">
+                <span>체크인 <b className="tnum text-ink-strong">{patrol.target.checkedInAt ?? '—'}</b></span>
+                <span>정시체크 <b className="tnum text-ink-strong">{patrol.target.checks.filter((c) => c === 'ok').length}/{patrol.target.checks.length}</b></span>
+                <a href={`tel:${patrol.target.phone.replace(/-/g, '')}`} className="ml-auto text-primary-700">{patrol.target.phone}</a>
+              </div>
+            </div>
+
+            {patrol.done ? (
+              <div className={`mt-3 rounded-xl px-3 py-2.5 text-label font-semibold ${patrol.done === 'ok' ? 'bg-ok-soft text-ok' : 'bg-critical-soft text-critical'}`}>
+                {patrol.done === 'ok' ? '✓ 정위치 확인 — 감사 기록됨' : '⚠ 불일치 보고 — 운영본부 이슈 접수됨'}
+              </div>
+            ) : (
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button onClick={() => doAudit('ok')} className="rounded-xl bg-primary-600 py-3 text-label font-semibold text-white transition hover:bg-primary-700">정위치 확인</button>
+                <button onClick={() => doAudit('mismatch')} className="rounded-xl border-2 border-critical bg-critical-soft py-3 text-label font-semibold text-critical transition hover:bg-critical/10">불일치 보고</button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )
