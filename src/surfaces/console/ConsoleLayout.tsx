@@ -2,6 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { OPS_INFO } from '../../lib/services'
 import { useNowMin } from '../../lib/useLive'
 import { fmtHM } from '../../lib/clock'
+import { useCapture } from '../../lib/capture'
 
 type NavItem = { to: string; label: string; end?: boolean }
 const groups: { title: string; items: NavItem[] }[] = [
@@ -34,8 +35,10 @@ const groups: { title: string; items: NavItem[] }[] = [
 
 export default function ConsoleLayout() {
   const now = useNowMin()
+  const capture = useCapture()
+  // 캡쳐 모드: h-full 대신 최소 900 + 본문 overflow-visible → 자연 높이로 펼쳐 2분할 컷.
   return (
-    <div className="flex h-full">
+    <div className={capture ? 'flex min-h-[900px]' : 'flex h-full'}>
       {/* 사이드바 */}
       <aside className="no-print flex w-60 shrink-0 flex-col bg-primary-700 text-neutral-100">
         <div className="px-5 pb-5 pt-6">
@@ -101,7 +104,7 @@ export default function ConsoleLayout() {
             </div>
           </div>
         </header>
-        <main className="min-h-0 flex-1 overflow-auto bg-page p-6">
+        <main className={`flex-1 bg-page p-6 ${capture ? 'overflow-visible' : 'min-h-0 overflow-auto'}`}>
           <Outlet />
         </main>
       </div>

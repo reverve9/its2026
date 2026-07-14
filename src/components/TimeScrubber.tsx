@@ -1,6 +1,7 @@
 import { useLocation } from 'react-router-dom'
 import { useNowMin } from '../lib/useLive'
 import { setNowMin, resetNow, fmtHM } from '../lib/clock'
+import { useCapture } from '../lib/capture'
 
 // 시간 스크러버 (dev 컨트롤) — 10:00→18:00 을 밀면 하루를 겪는다.
 // 밀면: 체크가 쌓이고, 미이행이 soft 플래그로 뜨고, 14:00 교대에 오후조 미출근이 경보로 뜬다.
@@ -19,7 +20,11 @@ const MARKS = [
 export default function TimeScrubber() {
   const { pathname } = useLocation()
   const now = useNowMin()
+  const capture = useCapture()
   const shift = now < 14 * 60 ? '오전조' : '오후조'
+
+  // 캡쳐 모드에선 아트보드 오염 방지 위해 스크러버 숨김.
+  if (capture) return null
 
   // 현장앱(/f)에선 헤더를 가리지 않도록 하단으로(서피스 스위처 위). 콘솔은 상단.
   const isField = pathname.startsWith('/f')

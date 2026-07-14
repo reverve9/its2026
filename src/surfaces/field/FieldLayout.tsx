@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { loadSession, saveSession, clearSession } from '../../lib/session'
 import type { FieldSession } from '../../lib/session'
+import { useCapture } from '../../lib/capture'
 import Identify from './Identify'
 import VolunteerHome from './VolunteerHome'
 import ManagerHome from './ManagerHome'
@@ -21,11 +22,17 @@ export default function FieldLayout() {
   }
 
   const isManager = session?.role === '거점관리자' || session?.role === '운영인력'
+  const capture = useCapture()
 
   return (
     // 좌측 페인 방식(레퍼런스 참조) — 모바일 풀폭 단일컬럼 / 데스크탑 고정폭 페인. 상한 460.
-    <div className="flex min-h-[100dvh] w-full justify-center bg-page">
-      <div className="relative flex h-[100dvh] w-full max-w-[460px] flex-col overflow-hidden bg-surface shadow-[0_0_40px_-16px_rgba(0,0,0,0.2)]">
+    // 캡쳐 모드: 정확히 412×915 아트보드로 고정(내부 스크롤 유지 = 단일 화면 샷).
+    <div className={`flex w-full justify-center bg-page ${capture ? 'min-h-[915px]' : 'min-h-[100dvh]'}`}>
+      <div
+        className={`relative flex flex-col overflow-hidden bg-surface shadow-[0_0_40px_-16px_rgba(0,0,0,0.2)] ${
+          capture ? 'h-[915px] w-[412px]' : 'h-[100dvh] w-full max-w-[460px]'
+        }`}
+      >
         {!session ? (
           <Identify onLogin={onLogin} />
         ) : isManager ? (
