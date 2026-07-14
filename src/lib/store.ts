@@ -2,7 +2,7 @@
 // 화면은 이 파일도 직접 쓰지 않는다(services 경유). store 는 데이터 소유 + 저수준 뮤테이션만.
 // 나중에 Supabase 로 교체 시 이 파일이 DB 클라이언트로 바뀌고, services 시그니처는 불변.
 
-import type { Coords, CheckMethod, Issue, Zone } from '../types'
+import type { Coords, CheckMethod, GoodsIssue, Issue, Zone } from '../types'
 import { emitChange } from './clock'
 import {
   zones as seedZones,
@@ -30,6 +30,7 @@ export interface StoredAssignment {
   breaks?: { startMin: number; endMin: number; note?: string }[]
   moving?: { startMin: number; endMin: number; note?: string }
   noShow?: boolean // 미출근(이벤트 없음)
+  goods?: GoodsIssue // 활동물품 지급 현황(마스터)
 }
 
 export type EventKind = 'checkin' | 'checkout' | 'hourly'

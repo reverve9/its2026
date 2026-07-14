@@ -9,7 +9,9 @@ const groups: { title: string; items: NavItem[] }[] = [
     title: '관제',
     items: [
       { to: '/', label: '통합 운영현황', end: true },
-      { to: '/people', label: '인력·자원봉사' },
+      { to: '/people', label: '인력·자원봉사 관제' },
+      { to: '/personnel', label: '인력 명부' },
+      { to: '/goods', label: '물품지급 현황' },
       { to: '/safety', label: '안전·비상' },
     ],
   },

@@ -41,6 +41,14 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/people" element={<People />} />
           <Route
+            path="/personnel"
+            element={<Placeholder title="인력 명부" note="배치 인력 전원 신상·연락처·외국어·배치·역할·비상연락망 대장(정적). 개인 상세는 관제 로스터와 모달 공유(근태 / 명부·물품 탭). 개인정보 최소수집·행사 후 즉시 파기(Ⅳ-8). 제작 예정." />}
+          />
+          <Route
+            path="/goods"
+            element={<Placeholder title="물품지급 현황" note="활동물품(바람막이·가방) 110세트 지급/미지급·잔여·지급일 트래킹 (본공고 3-1 제작·배부). 제작 예정." />}
+          />
+          <Route
             path="/safety"
             element={<Placeholder title="안전·비상 관제" note="SOS · 기상특보 대응 · 비상연락망 · 의료지원반 연계" />}
           />

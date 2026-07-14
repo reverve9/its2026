@@ -53,6 +53,14 @@ export interface Assignment {
   checkedOutAt?: string // HH:mm 퇴근(파생 — 지났을 때만 채움)
   phone: string // 연락처 — 즉각 소통(정시 체크 누락·근무공백 대응)
   checks: CheckState[] // 파생 — 조별 슬롯 정렬, 현재시각까지 지난 슬롯만
+  goods?: GoodsIssue // 활동물품 지급 현황(인력 행정 — 물품지급 화면·상세 모달 공유)
+}
+
+// 활동물품(바람막이·가방) 지급 — 본공고 3-1 제작·배부. 시간 비의존 마스터 데이터.
+export interface GoodsIssue {
+  jacket: boolean // 바람막이 지급
+  bag: boolean // 가방 지급
+  issuedAt?: string // 지급일(YYYY-MM-DD)
 }
 
 // ③ 출결 이벤트(scan/gps) — 실시간 로그·멱등 ─────────────

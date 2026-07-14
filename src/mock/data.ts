@@ -42,6 +42,8 @@ const nameOf = (i: number) => SUR[i % SUR.length] + GIV[(i * 7 + 3) % GIV.length
 const phoneOf = (i: number) =>
   `010-${String(2000 + ((i * 37) % 8000)).padStart(4, '0')}-${String(1000 + ((i * 53) % 9000)).padStart(4, '0')}`
 const langOf = (i: number): string[] | undefined => (i % 3 === 0 ? [LANGS[(i * 5) % LANGS.length]] : undefined)
+// 활동물품 지급 — 대부분 사전지급, 일부 미지급(물품지급 화면 대비 데이터 변주).
+const goodsOf = (i: number) => ({ jacket: i % 13 !== 0, bag: i % 9 !== 0, issuedAt: '2026-10-18' })
 
 // 거점 좌표 근처의 GPS 좌표(무인 체크인 이벤트용) — 결정적 미세 변위.
 const nearby = (c: Coords, i: number): Coords => ({
@@ -108,6 +110,7 @@ for (const z of zones) {
         shift,
         zoneId: z.id,
         plannedInMin: shift === 'AM' ? H(10) : H(14),
+        goods: goodsOf(gid),
       }
 
       const noShow = NOSHOW.has(k)
@@ -163,6 +166,7 @@ for (let r = 0; r < RESERVE_COUNT; r++) {
     shift: 'PM', // 현재 조 대기
     zoneId: null,
     plannedInMin: H(14),
+    goods: goodsOf(gid),
   })
 }
 

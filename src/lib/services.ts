@@ -67,6 +67,7 @@ function derive(a: StoredAssignment, now: number): Assignment {
     return {
       id: a.id, personName: a.personName, zoneId: null, role: a.role, shift: a.shift,
       date: a.date, isReserve: true, status: 'before', lang: a.lang, phone: a.phone, checks: [],
+      goods: a.goods,
     }
   }
 
@@ -101,6 +102,7 @@ function derive(a: StoredAssignment, now: number): Assignment {
     checkedInAt: checkedIn ? fmtHM(checkinEv!.timeMin) : undefined,
     checkedOutAt: checkedOut ? fmtHM(checkoutEv!.timeMin) : undefined,
     checks,
+    goods: a.goods,
   }
 }
 
