@@ -8,6 +8,7 @@ import { StatusBadge } from '../../components/ui'
 import { QrCode } from '../../components/QrCode'
 import { EMERGENCY_CONTACTS, SHUTTLE_INFO } from '../../lib/info'
 import type { FieldSession } from '../../lib/session'
+import logoW from '../../assets/logo-its-w.png'
 
 const telHref = (p: string) => `tel:${p.replace(/-/g, '')}`
 
@@ -75,21 +76,20 @@ export default function VolunteerHome({ session, onLogout }: { session: FieldSes
 
   return (
     <div className="flex h-full flex-col">
-      {/* 헤더 */}
-      <header className="bg-primary-700 px-5 pb-4 pt-8 text-white">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="font-latin text-[10px] font-semibold uppercase tracking-[0.18em] text-primary-200/70">ITS 2026 · Field</div>
-            <div className="mt-1 font-title text-title font-medium leading-tight">{a.personName}</div>
-            <div className="mt-0.5 text-label text-primary-200/80">{shiftLabel(a.shift)} · {zone?.name ?? '—'}</div>
-          </div>
-          <button onClick={onLogout} className="rounded-lg bg-white/10 px-2.5 py-1 text-caption font-semibold text-white/90 transition hover:bg-white/20">
-            로그아웃
-          </button>
-        </div>
+      {/* 헤더 — 로고 브랜드바 */}
+      <header className="flex items-center justify-between bg-primary-700 px-5 pb-4 pt-8">
+        <img src={logoW} alt="강릉 ITS 세계총회 2026" className="h-14 w-auto" />
+        <button onClick={onLogout} className="rounded-lg bg-white/10 px-2.5 py-1 text-caption font-semibold text-white/90 transition hover:bg-white/20">
+          로그아웃
+        </button>
       </header>
 
       <div className="flex-1 space-y-4 overflow-auto bg-page p-4">
+        {/* 사용자 헤딩 */}
+        <div>
+          <div className="font-title text-title font-semibold leading-tight text-ink-strong">{a.personName}</div>
+          <div className="mt-0.5 text-label text-ink-muted">{shiftLabel(a.shift)} · {zone?.name ?? '—'}</div>
+        </div>
         {/* 근무 카드 */}
         <div className="card p-4">
           <div className="flex items-center justify-between">
