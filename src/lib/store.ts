@@ -30,6 +30,7 @@ export interface StoredAssignment {
   breaks?: { startMin: number; endMin: number; note?: string }[]
   moving?: { startMin: number; endMin: number; note?: string }
   noShow?: boolean // 미출근(이벤트 없음)
+  standby?: Coords // 예비인력 대기 위치
   goods?: GoodsIssue // 활동물품 지급 현황(마스터)
 }
 

@@ -152,6 +152,12 @@ for (const z of zones) {
 }
 
 // ── 예비인력 pool(별도 유지 — 배치 안 된 상태, 110 에 미포함) ──
+// 대기 위치를 권역별로 분산 → 근무공백 발생 시 '거리' 산정이 실데이터가 됨.
+const STANDBY_POINTS: Coords[] = [
+  zoneById('z-info').coords, // 행사장(운영본부권)
+  zoneById('z-gyeongpo').coords, // 북부 해변권
+  zoneById('z-market').coords, // 시내권
+]
 const RESERVE_COUNT = 7
 for (let r = 0; r < RESERVE_COUNT; r++) {
   gid++
@@ -166,6 +172,7 @@ for (let r = 0; r < RESERVE_COUNT; r++) {
     shift: 'PM', // 현재 조 대기
     zoneId: null,
     plannedInMin: H(14),
+    standby: nearby(STANDBY_POINTS[r % STANDBY_POINTS.length], gid),
     goods: goodsOf(gid),
   })
 }

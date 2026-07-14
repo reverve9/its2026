@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   getKpi,
   getZones,
@@ -5,10 +6,9 @@ import {
   getAttendanceEvents,
   getIssues,
   getNotices,
-  getReserves,
-  assignReserve,
 } from '../../../lib/services'
 import { useLive } from '../../../lib/useLive'
+import StaffingGapFlow from '../StaffingGapFlow'
 import { PageHeader, Section, LivePill } from '../../../components/layout'
 import { StatTile } from '../../../components/ui'
 import { ZoneMap } from '../../../components/ZoneMap'
@@ -18,6 +18,7 @@ import { EventRow } from '../../../components/EventRow'
 import type { OpsAlert } from '../../../types'
 
 export default function Dashboard() {
+  const [gapFlow, setGapFlow] = useState<{ zoneId: string; zoneName: string } | null>(null)
   const kpi = useLive(getKpi)
   const zones = useLive(getZones)
   const alerts = useLive(getAlerts)
@@ -33,11 +34,9 @@ export default function Dashboard() {
   const gapCount = alerts.filter((a) => a.level === 'critical').length
   const shiftKo = kpi.activeShift === 'AM' ? '오전조' : '오후조'
 
-  // 예비인력 배치(B 플로우) — 경보 대상 거점에 대기 예비를 즉시 투입.
-  const handleAssign = async (alert: OpsAlert) => {
-    const reserves = await getReserves()
-    const r = reserves[0]
-    if (r) await assignReserve(alert.id, r.id)
+  // 근무공백 경보 → 3단계 대응 플로우 오픈.
+  const openGapFlow = (alert: OpsAlert) => {
+    if (alert.gapZoneId) setGapFlow({ zoneId: alert.gapZoneId, zoneName: alert.zoneName })
   }
 
   return (
@@ -87,7 +86,7 @@ export default function Dashboard() {
                   action={
                     a.level === 'critical' && a.gapZoneId ? (
                       <button
-                        onClick={() => handleAssign(a)}
+                        onClick={() => openGapFlow(a)}
                         className="rounded-lg bg-primary-600 px-2.5 py-1 text-caption font-semibold text-white transition hover:bg-primary-700"
                       >
                         예비인력 배치
@@ -148,6 +147,8 @@ export default function Dashboard() {
           </div>
         </Section>
       </div>
+
+      {gapFlow && <StaffingGapFlow zoneId={gapFlow.zoneId} zoneName={gapFlow.zoneName} onClose={() => setGapFlow(null)} />}
     </div>
   )
 }

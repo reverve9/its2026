@@ -3,6 +3,7 @@
 // 쓰기는 명령형 함수(R3) + 멱등키(R4). 나중에 Supabase 로 교체해도 이 시그니처는 불변.
 
 import { getNowMin, fmtHM } from './clock'
+import { distanceM } from './geo'
 import {
   rawZones,
   rawAssignments,
@@ -69,7 +70,7 @@ function derive(a: StoredAssignment, now: number): Assignment {
     return {
       id: a.id, personName: a.personName, zoneId: null, role: a.role, shift: a.shift,
       date: a.date, isReserve: true, status: 'before', lang: a.lang, phone: a.phone, checks: [],
-      goods: a.goods,
+      standby: a.standby, goods: a.goods,
     }
   }
 
@@ -104,7 +105,7 @@ function derive(a: StoredAssignment, now: number): Assignment {
     checkedInAt: checkedIn ? fmtHM(checkinEv!.timeMin) : undefined,
     checkedOutAt: checkedOut ? fmtHM(checkoutEv!.timeMin) : undefined,
     checks,
-    goods: a.goods,
+    standby: a.standby, goods: a.goods,
   }
 }
 
@@ -138,6 +139,24 @@ export async function getAssignment(id: string): Promise<Assignment | undefined>
 }
 export async function getReserves(): Promise<Assignment[]> {
   return roster(getNowMin()).filter((a) => a.isReserve)
+}
+
+// 근무공백 대응(B 플로우) — 특정 거점 기준 예비인력 옵션. 거리·외국어 매칭 계산(R5).
+export interface ReserveOption {
+  assignment: Assignment
+  distanceKm: number | null // 대기 위치 → 대상 거점 거리
+  langMatch: boolean // 외국어 가능(관광지 우선배치 근거)
+}
+export async function getReserveOptions(zoneId: string): Promise<ReserveOption[]> {
+  const zone = await getZone(zoneId)
+  const reserves = roster(getNowMin()).filter((a) => a.isReserve && !a.zoneId)
+  return reserves
+    .map((r) => ({
+      assignment: r,
+      distanceKm: zone && r.standby ? Math.round((distanceM(r.standby, zone.coords) / 1000) * 10) / 10 : null,
+      langMatch: (r.lang?.length ?? 0) > 0,
+    }))
+    .sort((a, b) => (a.distanceKm ?? 999) - (b.distanceKm ?? 999))
 }
 export async function getZone(id: string): Promise<Zone | undefined> {
   return (await getZones()).find((z) => z.id === id)

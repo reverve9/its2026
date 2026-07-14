@@ -53,6 +53,7 @@ export interface Assignment {
   checkedOutAt?: string // HH:mm 퇴근(파생 — 지났을 때만 채움)
   phone: string // 연락처 — 즉각 소통(정시 체크 누락·근무공백 대응)
   checks: CheckState[] // 파생 — 조별 슬롯 정렬, 현재시각까지 지난 슬롯만
+  standby?: Coords // 예비인력 대기 위치(근무공백 대응 거리 산정용)
   goods?: GoodsIssue // 활동물품 지급 현황(인력 행정 — 물품지급 화면·상세 모달 공유)
 }
 
