@@ -23,6 +23,14 @@ dist-ssr
 *.sln
 *.sw?
 
+# env & secrets (Supabase 연동 시 — 절대 커밋 금지)
+.env
+.env.*
+!.env.example
+
+# vercel CLI 링크
+.vercel
+
 # 프로젝트 내부 작업물 (푸시 제외)
 _DEV/
 _to_delete/
