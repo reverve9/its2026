@@ -9,8 +9,11 @@ import {
   getNotices,
   describeAudience,
   getEducationSummary,
+  getRecentScans,
+  getAssignments,
 } from '../../../lib/services'
 import { useLive } from '../../../lib/useLive'
+import { fmtHM } from '../../../lib/clock'
 import StaffingGapFlow from '../StaffingGapFlow'
 import { PageHeader, Section, LivePill } from '../../../components/layout'
 import { StatTile } from '../../../components/ui'
@@ -29,10 +32,16 @@ export default function Dashboard() {
   const issues = useLive(getIssues)
   const notices = useLive(getNotices)
   const edu = useLive(getEducationSummary)
+  // 서명 피드는 배치 id(subjectId·scannerId)만 들고 온다 — 이름은 명부로 푼다.
+  const scans = useLive(getRecentScans)
+  const roster = useLive(getAssignments)
 
-  if (!kpi || !zones || !alerts || !events || !issues || !notices || !edu) return null
+  if (!kpi || !zones || !alerts || !events || !issues || !notices || !edu || !scans || !roster) return null
 
   const zoneName = Object.fromEntries(zones.map((z) => [z.id, z.name]))
+  const personName = Object.fromEntries(roster.map((a) => [a.id, a.personName]))
+  // scannerId 가 null 인 스캔 = 슈퍼어드민(배치가 없다). 명부에 없는 게 정상이다.
+  const scannerName = (id: string | null) => (id === null ? '운영본부 관리자' : personName[id] ?? '—')
   const openZones = zones.filter((z) => z.status === 'open').length
   const openIssues = issues.filter((i) => i.status !== 'resolved').length
   const gapCount = alerts.filter((a) => a.level === 'critical').length
@@ -135,6 +144,35 @@ export default function Dashboard() {
               {events.map((e) => (
                 <EventRow key={e.id} event={e} zoneName={zoneName[e.zoneId] ?? e.zoneId} />
               ))}
+            </div>
+          </Section>
+
+          {/* 최근 서명(QR) — 증거 전용 층(D18). 여기 뜨는 서명은 출결·물품·이슈를 움직이지
+              않는다. 스캔은 있는데 물품이 미지급으로 남을 수 있고 그건 설계다.
+              거점 축이 없다(D19) — 스캔은 사람과 사람 사이의 사실이라 거점명을 안 찍는다. */}
+          <Section title="최근 서명 · QR" right={<LivePill />} bodyClassName="px-4 py-1">
+            <div className="divide-y divide-line-soft">
+              {scans.map((s) => (
+                <div key={s.id} className="py-2">
+                  <div className="flex items-baseline gap-2">
+                    <span className="shrink-0 rounded-md bg-neutral-100 px-1.5 py-0.5 text-caption font-semibold text-ink-muted">
+                      {s.kind}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-label font-semibold text-ink-strong">
+                      {personName[s.subjectId] ?? '—'}
+                    </span>
+                    <span className="tnum shrink-0 text-caption text-ink-faint">{fmtHM(s.timeMin)}</span>
+                  </div>
+                  <div className="mt-0.5 truncate text-caption text-ink-muted">
+                    {s.note ? `${s.note} · ` : ''}확인 {scannerName(s.scannerId)}
+                  </div>
+                  {/* 지오펜스는 게이트가 아니라 기록이다(D19) — 경보가 아니라 표시로 남긴다. */}
+                  {s.anomaly && <div className="mt-0.5 text-caption text-warn">⚠ {s.anomaly}</div>}
+                </div>
+              ))}
+              {scans.length === 0 && (
+                <div className="py-6 text-center text-label text-ink-faint">아직 서명 없음</div>
+              )}
             </div>
           </Section>
         </div>

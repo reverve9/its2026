@@ -4,6 +4,7 @@ import { useLive } from '../../../lib/useLive'
 import type { Employment } from '../../../types'
 import { Section } from '../../../components/layout'
 import { listNo, usePageState, paginate, Pagination } from '../../../components/ui'
+import { roleLabel, roleCls } from '../../../lib/roleLabel'
 
 // 운영인력 정산 — 자원봉사자 실비와 성격이 다르다.
 //   · 실비(24,000)가 아니라 고용 대가다 → 직원은 급여라 여기서 산정하지 않고(0원), 일용만 시급 기준.
@@ -126,8 +127,8 @@ export default function StaffSettlement() {
       </div>
 
       <div className="mb-4 grid grid-cols-4 gap-3">
-        <Tile label="운영인력" value={`${st.headcount}명`} sub={`거점관리자 10 · 현장운영 12`} />
-        <Tile label="직원" value={`${st.employeeCount}명`} sub="급여 — 이 정산에서 미산정" tone="muted" />
+        <Tile label="운영인력" value={`${st.headcount}명`} />
+        <Tile label="직원" value={`${st.employeeCount}명`} tone="muted" />
         <Tile label="일용" value={`${st.daylaborCount}명`} sub={`일급 ${won(st.dailyWage)}원`} />
         <Tile label="일용 실수령 소계" value={`${won(st.daylaborNet)}원`} sub={`지급 ${won(st.daylaborGross)} − 원천징수 ${won(st.daylaborWithholding)}`} tone="primary" />
       </div>
@@ -193,7 +194,11 @@ export default function StaffSettlement() {
                 <tr key={r.id} className="border-b border-line-soft last:border-0 hover:bg-primary-50/50">
                   <td className="tnum px-3 py-2.5 text-right text-ink-faint">{listNo(page.start + i)}</td>
                   <td className="px-3 py-2.5 font-semibold text-ink-strong">{r.personName}</td>
-                  <td className="px-3 py-2.5 text-ink-base">{r.role}</td>
+                  <td className="px-3 py-2.5">
+                    <span className={`rounded-md px-1.5 py-0.5 text-caption font-semibold ${roleCls(r.role)}`}>
+                      {roleLabel(r.role)}
+                    </span>
+                  </td>
                   <td className="px-3 py-2.5">
                     <span className={`rounded-md px-1.5 py-0.5 text-caption font-semibold ${empCls[r.employment]}`}>
                       {r.employment}
@@ -206,9 +211,9 @@ export default function StaffSettlement() {
                   </td>
                   <td className="tnum px-3 py-2.5 text-right font-semibold text-ink-base">{r.workedDays}일</td>
                   {isEmp ? (
-                    // 직원은 급여 — 이 정산의 대상이 아니라는 사실을 행으로 보여준다(0원 나열보다 명확).
-                    <td className="px-3 py-2.5 text-right text-caption text-ink-faint" colSpan={4}>
-                      급여 — 실비/일용 정산 대상 아님
+                    // 직원은 급여라 이 정산에서 산정하지 않는다 — 고용형태 배지가 이미 그 말을 한다.
+                    <td className="px-3 py-2.5 text-center text-ink-faint" colSpan={4}>
+                      —
                     </td>
                   ) : (
                     <>

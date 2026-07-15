@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { getAssignments, getZones } from '../../../lib/services'
 import { useLive, useNowMin } from '../../../lib/useLive'
+import { roleLabel, roleCls } from '../../../lib/roleLabel'
 import type { Assignment, DutyStatus, Shift } from '../../../types'
 import { PageHeader } from '../../../components/layout'
 import { StatusBadge, listNo, usePageState, paginate, Pagination } from '../../../components/ui'
@@ -239,7 +240,11 @@ export default function People() {
                       {a.phone}
                     </a>
                   </td>
-                  <td className="px-3 py-2.5 text-ink-base">{a.role}</td>
+                  <td className="px-3 py-2.5">
+                    <span className={`rounded-md px-1.5 py-0.5 text-caption font-semibold ${roleCls(a.role)}`}>
+                      {roleLabel(a.role)}
+                    </span>
+                  </td>
                   <td className="tnum px-3 py-2.5 text-ink-muted">{a.checkedInAt ?? '—'}</td>
                   <td className="px-3 py-2.5"><StatusBadge status={a.status} /></td>
                   <td className="tnum px-3 py-2.5 text-ink-muted">{a.checkedOutAt ?? '—'}</td>

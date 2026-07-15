@@ -393,10 +393,28 @@ for (let r = 0; r < RESERVE_COUNT; r++) {
 // ⚠️ '활동물품수령'은 일부러 안 심는다. 시드상 활동물품은 10/18 사전 일괄배부(goodsOf)라
 //    행사 당일 수령 서명을 만들면 그 자체가 모순이다. 남은 미지급자 수령은 라이브로 찍는다.
 //
+// ⚠️ 같은 이유로 그날 미출근한 사람에게도 안 심는다(pickPresent). 네 kind 가 전부 대면 사실이라
+//    — 관리자가 그 사람 앞에 가서 찍는다 — 오지 않은 사람에게는 물리적으로 만들 수 없다.
+//    D18('스캔은 아무것도 구동하지 않는다')은 인과에 대한 결정이지 모순 허가가 아니다.
+//    '스캔은 있는데 물품 미지급'은 마스터 반영 지연이라 둘 다 참일 수 있지만,
+//    '미출근인데 정위치 근무 확인'은 둘 다 참일 수가 없다.
+//
 // 거점 기반이 아니다 — ScanEvent 에 zoneId 가 없다. 아래에서 관리자가 자기 거점 봉사자를
 // 찍는 건 모델의 제약이 아니라 그냥 물리적으로 그렇게 되기 때문이다.
 const scans: ScanEvent[] = []
 let scid = 0
+
+// 그날 안 온 사람 — 위 ⑥에서 이미 확정된 사실을 재사용한다(다시 계산하면 두 진실이 생긴다).
+const noShowOn = new Set(dutyProfiles.filter((p) => p.noShow).map((p) => `${p.assignmentId}:${p.date}`))
+// 풀에서 그날 출근한 사람을 고른다. offset 은 날짜별로 대상을 흩는 용도(옛 `v.AM[d % len]`).
+// 전원 미출근이면 undefined — 그 거점은 그날 서명이 없고, 그게 맞다.
+function pickPresent(pool: string[], date: string, offset: number): string | undefined {
+  for (let i = 0; i < pool.length; i++) {
+    const c = pool[(offset + i) % pool.length]
+    if (!noShowOn.has(`${c}:${date}`)) return c
+  }
+  return undefined
+}
 function pushScan(
   subjectId: string, scannerId: string, kind: ScanKind, date: string, timeMin: number, note: string, zoneId: string
 ) {
@@ -419,18 +437,22 @@ for (const date of SEED_DATES) {
     if (!mgr || !v) continue
     const d = SEED_DATES.indexOf(date)
     // 대면확인 — 옛 순회 감사를 대체한다. 관리자가 그 사람 앞에 가서 찍는다.
-    if (v.AM[d % v.AM.length]) pushScan(v.AM[d % v.AM.length], mgr, '대면확인', date, H(11, 10 + d * 7), '정위치 근무 확인', z.id)
-    if (v.PM[(d + 1) % v.PM.length]) pushScan(v.PM[(d + 1) % v.PM.length], mgr, '대면확인', date, H(15, 20 + d * 5), '정위치 근무 확인', z.id)
+    const amFace = pickPresent(v.AM, date, d)
+    if (amFace) pushScan(amFace, mgr, '대면확인', date, H(11, 10 + d * 7), '정위치 근무 확인', z.id)
+    const pmFace = pickPresent(v.PM, date, d + 1)
+    if (pmFace) pushScan(pmFace, mgr, '대면확인', date, H(15, 20 + d * 5), '정위치 근무 확인', z.id)
     // 현장물품수령 — RFP 11. "근무 기간 중 생수, 간식 등 물품 배부". 반복·정산 무관이라
     // GoodsIssue(1인 1세트 마스터)로는 표현이 불가능했던 자리다.
-    if (v.AM[(d + 2) % v.AM.length]) pushScan(v.AM[(d + 2) % v.AM.length], mgr, '현장물품수령', date, H(12, 30 + d * 3), d === 2 ? '생수 2병' : '생수 2병·간식', z.id)
+    const amGoods = pickPresent(v.AM, date, d + 2)
+    if (amGoods) pushScan(amGoods, mgr, '현장물품수령', date, H(12, 30 + d * 3), d === 2 ? '생수 2병' : '생수 2병·간식', z.id)
   }
 }
 // 지시인수 — 거점 대면 인스턴트 지시의 확인. 온라인 공지 ack 이 아니다.
 // 오늘 오후 강풍 예보(nt-2, 13:50)에 붙는 현장 지시.
 for (const zid of ['z-gyeongpo', 'z-anmok', 'z-gangmun', 'z-photo']) {
   const v = volunteersOf[zid]
-  if (v?.PM[0]) pushScan(v.PM[0], managerOf[zid], '지시인수', SEED_DATE, H(14, 12), '강풍 대비 — 야외 게시물 결속·대피 동선 전달', zid)
+  const target = v && pickPresent(v.PM, SEED_DATE, 0)
+  if (target) pushScan(target, managerOf[zid], '지시인수', SEED_DATE, H(14, 12), '강풍 대비 — 야외 게시물 결속·대피 동선 전달', zid)
 }
 
 export { assignments, events, dutyProfiles, scans }

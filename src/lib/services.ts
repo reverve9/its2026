@@ -1018,13 +1018,17 @@ export async function getRecentScans(limit = 8): Promise<ScanEvent[]> {
     .slice(0, limit)
 }
 
-// 봉사자별 대면확인 횟수 — 랜덤성 포기의 대가(관리자가 찍을 사람을 고른다)를 드러내는 자리.
-// 날짜를 안 가린다: 편중은 하루가 아니라 기간으로 봐야 보인다.
-export async function getFaceCheckCounts(): Promise<Record<string, number>> {
-  const out: Record<string, number> = {}
-  for (const s of rawScans()) if (s.kind === '대면확인') out[s.subjectId] = (out[s.subjectId] ?? 0) + 1
-  return out
-}
+// ⚠️ 폐기: getFaceCheckCounts — 봉사자별 대면확인 횟수. 되살리지 말 것.
+// #08 §1-4 가 랜덤 감사를 버리면서 '관리자가 찍을 사람을 고른다'의 보완책으로 이 자리를 지목했다:
+// 횟수를 노출하면 편중이 드러난다는 것. 화면을 붙이려고 실제 분포를 재보니 편중이 없었다 —
+// 3일 누적 55건이 53명에게 흩어져 0회 57명 · 1회 51명 · 2회 2명(배치 110 기준).
+// 시드가 라운드로빈(v.AM[d % len])으로 대상을 고르기 때문이다.
+// → 110행 중 108행이 0 아니면 1인 컬럼이 된다. 임계도 행동도 없어 장식이다.
+// → 0회 57명에 '미확인' 경고를 붙이는 것도 안 된다: 대면확인은 표본 감사고(순회 감사를 대체한 자리)
+//    전원 확인 규칙이 없다. 없는 기준을 지어내는 게 된다.
+// 편중을 실제로 드러내려면 시드에 편중을 심어야 하는데, 그건 탐지기를 보여주려고 결함을 심는 것이라
+// 지어내기다. 관리자가 실제로 편중되게 찍는지 우리는 모른다.
+// 개인별 서명 이력은 getScansFor(개인 상세 근태 탭), 전체 흐름은 getRecentScans(통합 운영현황)가 맡는다.
 
 export async function reportIssue(input: {
   type: Issue['type']; zoneId: string | null; note: string; ts: number; idempotencyKey: string

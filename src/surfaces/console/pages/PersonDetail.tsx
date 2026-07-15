@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import {
   getAssignment, getDutyLog, getZones, getShiftSlots, issueGoods, setPayoutInfo, payoutReady,
-  getEducation, educationRecord,
+  getEducation, educationRecord, getScansFor, getAssignments,
 } from '../../../lib/services'
 import { useLive, useNowMin } from '../../../lib/useLive'
+import { roleLabel } from '../../../lib/roleLabel'
 import { EDUCATION_KINDS } from '../../../types'
 import type { CheckState, GoodsIssue, PayoutInfo } from '../../../types'
 import { Section } from '../../../components/layout'
@@ -84,10 +85,13 @@ export default function PersonDetailModal({
   const [tab, setTab] = useState<PersonTab>(initialTab)
   const now = useNowMin()
   const data = useLive(async () => {
-    const [asg, log, zones] = await Promise.all([getAssignment(id), getDutyLog(id), getZones()])
+    // scans 는 배치 id 로 귀속된다(교육과 달리 사람이 아니라 배치가 키다 — 서명은 그날 그 자리의 사실).
+    const [asg, log, zones, scans, roster] = await Promise.all([
+      getAssignment(id), getDutyLog(id), getZones(), getScansFor(id), getAssignments(),
+    ])
     // 교육 이수는 배치가 아니라 사람(personId)에 귀속 — 배치를 먼저 찾아 personId 로 조회한다.
     const education = asg ? await getEducation(asg.personId) : []
-    return { asg, log, zones, education }
+    return { asg, log, zones, education, scans, roster }
   }, [id])
 
   useEffect(() => {
@@ -116,6 +120,11 @@ export default function PersonDetailModal({
   const education = data?.education ?? []
   const eduDone = !!educationRecord(education, '사전 통합교육')
 
+  const scans = data?.scans ?? []
+  // scannerId 가 null 인 서명 = 슈퍼어드민이 찍은 것. 배치가 없어 명부에 없는 게 정상이다.
+  const scannerName = (sid: string | null) =>
+    sid === null ? '운영본부 관리자' : data?.roster.find((r) => r.id === sid)?.personName ?? '—'
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-ink-strong/40 p-4"
@@ -134,7 +143,7 @@ export default function PersonDetailModal({
               <div>
                 <div className="font-title text-title font-medium text-ink-strong">{a.personName}</div>
                 <div className="mt-0.5 text-label text-ink-muted">
-                  {shiftKo} · {a.role} · {zoneName}
+                  {shiftKo} · {roleLabel(a.role)} · {zoneName}
                   {a.isReserve ? ' · 투입 대기' : ''}
                 </div>
               </div>
@@ -255,6 +264,38 @@ export default function PersonDetailModal({
                   )}
                 </Section>
               </div>
+
+              {/* 서명(QR) — 증거 전용 층(D18). 근태 탭에 있는 이유는 시각 컷을 타기 때문이고(탭 계약),
+                  근퇴 타임라인과 합치지 않은 이유는 서명이 근태 사실이 아니기 때문이다.
+                  섞으면 화면이 '서명 = 출결'이라 말하게 되는데 그건 D18 이 부정한 것이다. */}
+              <div className="mt-5">
+                <Section
+                  title="서명 · QR"
+                  right={<span className="tnum text-caption text-ink-muted">{scans.length}건</span>}
+                >
+                  {scans.length === 0 ? (
+                    <p className="py-6 text-center text-label text-ink-faint">오늘 남은 서명 없음</p>
+                  ) : (
+                    <div className="divide-y divide-line-soft">
+                      {scans.map((s) => (
+                        <div key={s.id} className="flex items-baseline gap-2 py-2.5 first:pt-0 last:pb-0">
+                          <span className="shrink-0 rounded-md bg-neutral-100 px-1.5 py-0.5 text-caption font-semibold text-ink-muted">
+                            {s.kind}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-label text-ink-base">
+                              {s.note ? `${s.note} · ` : ''}확인 {scannerName(s.scannerId)}
+                            </div>
+                            {/* 지오펜스는 차단이 아니라 기록이다(D19) — 사후 대조용으로만 남긴다. */}
+                            {s.anomaly && <div className="mt-0.5 text-caption text-warn">⚠ {s.anomaly}</div>}
+                          </div>
+                          <span className="tnum shrink-0 text-caption text-ink-faint">{fmtHM(s.timeMin)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Section>
+              </div>
             </div>
 
             {/* 명부·물품 탭 — 시간 비의존 마스터. 스크러버를 밀어도 이 탭은 변하지 않는다. */}
@@ -267,7 +308,7 @@ export default function PersonDetailModal({
                       {a.phone}
                     </a>
                   </Row>
-                  <Row label="역할">{a.role}</Row>
+                  <Row label="역할">{roleLabel(a.role)}</Row>
                   <Row label="근무조">{shiftKo}</Row>
                   <Row label="배치 거점">{zoneName}{a.isReserve ? ' · 투입 대기' : ''}</Row>
                   <Row label="가능 외국어">{a.lang?.join(' · ') ?? '없음'}</Row>

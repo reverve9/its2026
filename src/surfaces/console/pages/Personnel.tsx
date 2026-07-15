@@ -5,6 +5,7 @@ import {
   hasEducation, certifyEducationBatch, CURRENT_OPERATOR,
 } from '../../../lib/services'
 import { useLive } from '../../../lib/useLive'
+import { roleLabel, roleCls } from '../../../lib/roleLabel'
 import { EDUCATION_KINDS } from '../../../types'
 import type { EducationKind, PersonnelRecord, Shift, StaffKind } from '../../../types'
 import { PageHeader } from '../../../components/layout'
@@ -99,8 +100,6 @@ export default function Personnel() {
   const zoneName = (p: PersonnelRecord) =>
     p.isReserve ? '예비 · 미배정' : zones.find((z) => z.id === p.zoneId)?.name ?? '—'
   const goodsDone = (p: PersonnelRecord) => (p.goods.jacket ? 1 : 0) + (p.goods.bag ? 1 : 0)
-  // 외국어 우선배치는 자원봉사자(관광지 거점) 얘기 — 운영인력을 섞으면 모수가 오염된다.
-  const langCount = people.filter((p) => p.kind === '자원봉사자' && p.lang.length > 0).length
   // 교육 이수율 — 자원봉사자 배치 인력 기준(예비 제외). 대시보드 KPI(getEducationSummary)와 같은 모수.
   // kind 를 안 가르면 모수가 132(운영인력 22 포함)가 되어 같은 숫자가 여기선 77%, 대시보드에선 92%로
   // 갈린다. 사전 통합교육은 자원봉사자 항목이라 운영인력에겐 이수 이력 자체가 없다.
@@ -203,7 +202,6 @@ export default function Personnel() {
     <div>
       <PageHeader
         title="인력 현황"
-        summary="배치 인력 전원 명부 대장 — 신상·연락처·외국어·배치계획·활동물품 지급 (시간 비의존 마스터)"
         right={
           <button
             onClick={() => window.print()}
@@ -215,7 +213,7 @@ export default function Personnel() {
       />
 
       {/* 요약 — 물품 지급률이 이 화면의 KPI(근태 아님) */}
-      <div className="mb-4 grid grid-cols-6 gap-3">
+      <div className="mb-4 grid grid-cols-5 gap-3">
         {/* 총원은 전 인력, 물품·교육 모수는 자원봉사자 — 서로 다르므로 sub 에 구성을 명시한다. */}
         <SummaryTile
           label="명부 총원"
@@ -236,7 +234,6 @@ export default function Personnel() {
           sub={eduPending ? `미이수 ${eduPending} / ${eduBase.length}` : `전원 이수 완료 (${eduBase.length})`}
           tone={eduPending ? 'warn' : 'ok'}
         />
-        <SummaryTile label="외국어 가능" value={`${langCount}명`} sub="영어 · 중국어 · 일본어 · 러시아어" />
       </div>
 
       {/* 검색 · 필터 */}
@@ -434,11 +431,9 @@ export default function Personnel() {
                 {/* 직무 + 고용형태 — 운영인력만 고용형태가 붙는다(자원봉사자는 고용관계가 없다). */}
                 <td className="px-3 py-2.5">
                   <div className="flex items-center gap-1">
-                    {p.kind === '운영인력' ? (
-                      <span className="rounded-md bg-primary-50 px-1.5 py-0.5 text-caption font-semibold text-primary-700">{p.role}</span>
-                    ) : (
-                      <span className="text-ink-base">{p.role}</span>
-                    )}
+                    <span className={`rounded-md px-1.5 py-0.5 text-caption font-semibold ${roleCls(p.role)}`}>
+                      {roleLabel(p.role)}
+                    </span>
                     {p.employment && (
                       <span
                         className={`rounded-md px-1.5 py-0.5 text-caption font-semibold ${
