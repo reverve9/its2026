@@ -86,21 +86,42 @@ const vendors: StoredVendor[] = seedVendors.map((v) => ({ ...v, docs: v.docs.map
 let eventSeq = events.length
 let issueSeq = issues.length
 
-// ── 안전 상태(중대재해 6-3) — 작업중지·위험요인 점검·기상특보 ──
+// ── 안전 상태 — 작업중지 · 운영중단 · 위험요인 점검 ──────
 export interface HazardItem {
   id: string
   label: string
   checked: boolean
   checkedAt?: string
 }
+
+// 운영중단 — 과업지시서는 '작업중지'와 '운영중단'을 나란히 다른 조치로 쓴다.
+//   작업중지: 위험작업(고소·전기·중량물·구조물·야간) 중지. 대상 = 작업자·운영인력·하도급 종사자.
+//             설치·철거에 몰려 있어 이 플랫폼이 다루는 행사 5일 밖 → 콘솔에만 둔다.
+//   운영중단: 거점 운영 중지. 대상 = 거기 서 있는 자원봉사자·거점관리자 → 현장앱에 전파해야 한다.
+//
+// 범위가 핵심이다. 이전 모델(weatherStop: boolean)은 전역이라 '강풍인데 실내 거점만 살린다'가
+// 표현 불가능했고, 콘솔은 "야외 거점(해변·포토존) 운영중단을 일괄 전파"라 써놓고 거점을 고를
+// 수단이 없어 스스로 모순이었다.
+//   zoneIds: null   전 거점(토털) — 국가 비상사태·애도 등. 확률은 낮아도 무시할 수 없다
+//   zoneIds: [...]  해당 거점만 — 기상특보(해변·포토존은 닫고 박물관은 운영)·시설물 이상
+//
+// 발령은 런타임 이벤트다 — 전날 예고가 아니라 행사 당일 오후, 이미 배치된 인원이 거점에 서 있는
+// 상태에서 떨어진다(선례). 그래서 at(발령 시각)이 기록되고 현장앱에 즉시 닿아야 한다.
+export interface Suspension {
+  active: boolean
+  reason: string
+  at: string | null // HH:mm 발령 시각
+  zoneIds: string[] | null // null = 전 거점
+}
+
 export interface SafetyState {
-  workStop: { active: boolean; reason: string; at: string | null } // 작업중지 발령
-  weatherStop: { active: boolean; at: string | null } // 기상특보 야외운영중단
+  workStop: { active: boolean; reason: string; at: string | null } // 작업중지 발령(콘솔 전용)
+  suspension: Suspension // 운영중단 발령 — 현장앱 전파 대상
   hazards: HazardItem[] // 위험요인 점검표
 }
 const safety: SafetyState = {
   workStop: { active: false, reason: '', at: null },
-  weatherStop: { active: false, at: null },
+  suspension: { active: false, reason: '', at: null, zoneIds: null },
   hazards: [
     { id: 'hz-elec', label: '전기·발전기 배선 접지·절연 상태', checked: true, checkedAt: '09:30' },
     { id: 'hz-struct', label: '무대·천막·구조물 결속·전도 방지', checked: true, checkedAt: '09:35' },
@@ -116,8 +137,11 @@ export function setWorkStop(active: boolean, reason: string, at: string | null):
   safety.workStop = { active, reason: active ? reason : '', at: active ? at : null }
   emitChange()
 }
-export function setWeatherStop(active: boolean, at: string | null): void {
-  safety.weatherStop = { active, at: active ? at : null }
+// zoneIds: null = 전 거점. 해제하면 범위도 같이 지운다(잔상이 남으면 다음 발령이 오염된다).
+export function setSuspension(active: boolean, reason: string, at: string | null, zoneIds: string[] | null): void {
+  safety.suspension = active
+    ? { active: true, reason, at, zoneIds: zoneIds?.length ? zoneIds : null }
+    : { active: false, reason: '', at: null, zoneIds: null }
   emitChange()
 }
 export function setHazard(id: string, checked: boolean, at: string | null): void {

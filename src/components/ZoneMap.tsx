@@ -2,11 +2,12 @@ import type { Zone } from '../types'
 
 // 스키매틱 거점 지도 — 타일맵 없이 실제 위경도를 정규화해 상대 위치로 배치.
 // (블라인드·오프라인 안전, 지명/브랜딩 노출 없음)
-// 모양 = 종류(행사장 사각 / 관광지 원), 색 = 상태(공백=경보 / 정상 / 비운영).
+// 모양 = 종류(행사장 사각 / 관광지 원), 색 = 상태(공백=경보 / 중단=발령 / 정상 / 비운영).
 
 const C = {
   primary: '#37766f',
   critical: '#b91c1c',
+  warn: '#b45309',
   neutral: '#8c979e',
   line: '#d7dde1',
   region: '#eff5f4',
@@ -21,8 +22,10 @@ const short: Record<string, string> = {
   'z-anmok': '안목', 'z-jumunjin': '주문진', 'z-gangmun': '강문', 'z-ojuk': '오죽헌',
 }
 
+// 중단은 회색(비운영)이 아니라 경고색이다 — 시간이 지나 닫힌 것(before/closed)과 달리
+// 본부가 개입해 멈춘 상태라, 지도에서 눈에 띄어야 한다.
 const fillOf = (z: Zone) =>
-  z.status !== 'open' ? C.neutral : z.present < z.quota ? C.critical : C.primary
+  z.status === 'suspended' ? C.warn : z.status !== 'open' ? C.neutral : z.present < z.quota ? C.critical : C.primary
 
 export function ZoneMap({ zones }: { zones: Zone[] }) {
   const W = 440, H = 300, pad = 30

@@ -42,7 +42,7 @@ import {
   hasEventKey,
   rawSafety,
   setWorkStop,
-  setWeatherStop,
+  setSuspension,
   setHazard,
 } from './store'
 import type { StoredAssignment, StoredEvent, SafetyState } from './store'
@@ -181,7 +181,11 @@ function deriveZone(z: Zone, list: Assignment[], now: number): Zone {
     (a) => a.zoneId === z.id && a.shift === shift && a.kind === '자원봉사자' && isPresent(a.status)
   ).length
   const start = hm(z.opWindow.start), end = hm(z.opWindow.end)
-  const status: Zone['status'] = now < start ? 'before' : now >= end ? 'closed' : 'open'
+  // 운영중단 발령이 운영시간을 이긴다 — 본부의 조치는 시간표보다 위다.
+  // 다만 아직 열지 않았거나(before) 이미 끝난(closed) 거점은 중단할 대상이 없으므로 그대로 둔다.
+  const byClock: Zone['status'] = now < start ? 'before' : now >= end ? 'closed' : 'open'
+  const status: Zone['status'] =
+    byClock === 'open' && isZoneSuspended(rawSafety(), z.id) ? 'suspended' : byClock
   return { ...z, present, status }
 }
 const hm = (s: string) => { const [h, m] = s.split(':').map(Number); return h * 60 + m }
@@ -908,7 +912,7 @@ export async function reportIssue(input: {
 }
 
 // ── 안전·비상 (중대재해 6-3) ────────────────────────────
-export type { SafetyState, HazardItem } from './store'
+export type { SafetyState, HazardItem, Suspension } from './store'
 export async function getSafety(): Promise<SafetyState> {
   return rawSafety()
 }
@@ -923,12 +927,20 @@ export async function declareWorkStop(reason: string): Promise<void> {
 export async function liftWorkStop(): Promise<void> {
   setWorkStop(false, '', null)
 }
-// 기상특보 야외운영중단 전파/해제.
-export async function declareWeatherStop(): Promise<void> {
-  setWeatherStop(true, getNowHM())
+// 운영중단 발령/해제 — 현장앱 전파 대상(R3).
+// zoneIds 를 비우거나 null 로 주면 전 거점(토털). 사유는 발주처 보고에 그대로 실린다.
+export async function declareSuspension(reason: string, zoneIds: string[] | null): Promise<void> {
+  setSuspension(true, reason, getNowHM(), zoneIds)
 }
-export async function liftWeatherStop(): Promise<void> {
-  setWeatherStop(false, null)
+export async function liftSuspension(): Promise<void> {
+  setSuspension(false, '', null, null)
+}
+
+// 이 거점이 운영중단 대상인가 — 콘솔 거점 현황·현장앱 배너가 공유하는 단일 판정(R5).
+export function isZoneSuspended(s: SafetyState, zoneId: string | null): boolean {
+  if (!s.suspension.active) return false
+  if (s.suspension.zoneIds === null) return true // 전 거점
+  return zoneId !== null && s.suspension.zoneIds.includes(zoneId)
 }
 // 위험요인 점검 토글.
 export async function toggleHazard(id: string, checked: boolean): Promise<void> {

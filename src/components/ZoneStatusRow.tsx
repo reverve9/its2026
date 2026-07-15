@@ -9,6 +9,7 @@ const statusMeta: Record<Zone['status'], { label: string; cls: string }> = {
   before: { label: '운영 전', cls: 'text-ink-faint' },
   open: { label: '운영 중', cls: 'text-ok' },
   closed: { label: '종료', cls: 'text-ink-faint' },
+  suspended: { label: '중단', cls: 'text-warn font-bold' },
 }
 
 export function ZoneStatusRow({ zone }: { zone: Zone }) {

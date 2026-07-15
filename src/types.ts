@@ -5,7 +5,9 @@
 // ── 공통 ─────────────────────────────────────────────────
 export type ZoneKind = 'venue' | 'tourist' // 행사장(유인) / 관광지(무인)
 export type CheckMode = 'manager_scan' | 'self_gps' // 유인 관리자 스캔 / 무인 GPS 셀프
-export type ZoneStatus = 'before' | 'open' | 'closed' // 운영 전 / 운영 중 / 운영 종료
+// 운영 전 / 운영 중 / 운영 종료 / 운영중단(본부 발령 — 시간이 아니라 조치로 닫힌 상태)
+// 'closed'(운영시간 종료)와 'suspended'(중단 발령)는 다르다 — 전자는 예정된 끝, 후자는 개입이다.
+export type ZoneStatus = 'before' | 'open' | 'closed' | 'suspended'
 
 // 근무조 — 본공고 3-1: 1일 2교대(오전 55 / 오후 55). 금요일만 1교대.
 export type Shift = 'AM' | 'PM'

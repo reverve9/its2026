@@ -116,7 +116,7 @@ export default function Report() {
           <Block n={3} title="안전관리">
             <div className="space-y-1.5 text-label text-ink-base">
               <div>· 작업중지: {safety.workStop.active ? <b className="text-critical">발령 중 ({safety.workStop.at}) — {safety.workStop.reason}</b> : <span className="text-ok">발령 없음(정상 운영)</span>}</div>
-              <div>· 기상특보 야외중단: {safety.weatherStop.active ? <b className="text-warn">전파 중 ({safety.weatherStop.at})</b> : '해당 없음'}</div>
+              <div>· 운영중단: {safety.suspension.active ? <b className="text-warn">{safety.suspension.zoneIds === null ? '전 거점' : `${safety.suspension.zoneIds.length}개 거점`} 전파 중 ({safety.suspension.at}) — {safety.suspension.reason}</b> : <span className="text-ok">발령 없음(정상 운영)</span>}</div>
               <div>· 위험요인 점검: <b className={hazardChecked === safety.hazards.length ? 'text-ok' : 'text-warn'}>{hazardChecked}/{safety.hazards.length}</b> 완료{hazardChecked < safety.hazards.length ? ` (미점검: ${safety.hazards.filter((h) => !h.checked).map((h) => h.label).join(', ')})` : ''}</div>
               <div>· 안전사고 접수: <b>{issues.filter((i) => i.type === '안전사고').length}건</b></div>
             </div>

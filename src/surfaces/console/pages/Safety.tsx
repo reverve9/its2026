@@ -1,24 +1,38 @@
 import { useState } from 'react'
 import {
   getSafety, getSafetyIssues, getZones,
-  declareWorkStop, liftWorkStop, declareWeatherStop, liftWeatherStop,
+  declareWorkStop, liftWorkStop, declareSuspension, liftSuspension,
   toggleHazard, fileIncidentReport,
 } from '../../../lib/services'
 import { useLive } from '../../../lib/useLive'
 import { getNowMin } from '../../../lib/clock'
 import { PageHeader, Section, LivePill } from '../../../components/layout'
 
+// 운영중단 사유 프리셋 — 핵심은 문구가 아니라 '범위가 다르다'는 것이다.
+// 기상은 야외 거점만 닫고 실내(박물관)는 살린다. 비상사태·애도는 전 거점(zoneIds: null).
+// 국가 애도로 전국 행사가 일괄 취소된 선례가 있고, 그것도 전날 예고가 아니라 행사 당일
+// 오후에 — 이미 인력이 거점에 배치된 상태에서 — 전파됐다.
+const OUTDOOR_ZONES = ['z-gyeongpo', 'z-anmok', 'z-gangmun', 'z-photo', 'z-stage']
+const SUSPEND_PRESETS: { label: string; reason: string; zoneIds: string[] | null }[] = [
+  { label: '강풍특보', reason: '강풍특보 — 야외 구조물·천막 전도 위험', zoneIds: OUTDOOR_ZONES },
+  { label: '폭우', reason: '호우특보 — 야외 활동 위험, 실내 거점은 정상 운영', zoneIds: OUTDOOR_ZONES },
+  { label: '국가 비상사태·애도', reason: '국가 애도기간 — 행사 전면 중단', zoneIds: null },
+]
+
 export default function Safety() {
   const safety = useLive(getSafety)
   const issues = useLive(getSafetyIssues) ?? []
   const zones = useLive(getZones) ?? []
 
+  const [susReason, setSusReason] = useState('')
+  const [susZones, setSusZones] = useState<string[] | null>(null) // null = 전 거점
   const [stopReason, setStopReason] = useState('')
   const [inc, setInc] = useState({ zoneId: '', summary: '', firstAction: '' })
   const [incSent, setIncSent] = useState(false)
 
   if (!safety) return null
   const ws = safety.workStop
+  const sus = safety.suspension
   const checkedCount = safety.hazards.filter((h) => h.checked).length
 
   const submitIncident = async () => {
@@ -139,17 +153,78 @@ export default function Safety() {
 
         {/* 우 1/3 — 긴급 상황 + 전파 */}
         <div className="col-span-1 flex flex-col gap-5">
-          {/* 기상특보 전파 */}
-          <Section title="기상특보 대응">
-            {safety.weatherStop.active ? (
+          {/* 운영중단 전파 — 작업중지와 다른 조치다(대상: 거점에 선 봉사자·거점관리자) */}
+          <Section title="운영중단 전파">
+            {sus.active ? (
               <div className="rounded-lg bg-warn-soft px-3 py-2.5">
-                <div className="text-label font-bold text-warn">야외운영 중단 전파 중 · {safety.weatherStop.at}</div>
-                <button onClick={() => liftWeatherStop()} className="mt-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-caption font-semibold text-ink-muted hover:bg-neutral-100">전파 해제</button>
+                <div className="text-label font-bold text-warn">
+                  {sus.zoneIds === null ? '전 거점' : `${sus.zoneIds.length}개 거점`} 운영중단 전파 중 · {sus.at}
+                </div>
+                <div className="mt-0.5 text-caption text-ink-base">사유: {sus.reason}</div>
+                <div className="mt-1 text-caption text-ink-muted">
+                  {sus.zoneIds === null
+                    ? '전 거점 현장앱 상단에 표시 중 — 봉사자·거점관리자 전원.'
+                    : `대상 거점 현장앱 상단에 표시 중 — ${sus.zoneIds.map((id) => zones.find((z) => z.id === id)?.name ?? id).join(', ')}`}
+                </div>
+                <button onClick={() => liftSuspension()} className="mt-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-caption font-semibold text-ink-muted hover:bg-neutral-100">전파 해제(운영 재개)</button>
               </div>
             ) : (
               <>
-                <p className="text-label text-ink-muted">기상특보 시 야외 거점(해변·포토존) 운영중단을 일괄 전파합니다.</p>
-                <button onClick={() => declareWeatherStop()} className="mt-3 w-full rounded-lg bg-warn px-4 py-2.5 text-label font-bold text-white transition hover:bg-warn/90">야외운영 중단 전파</button>
+                <p className="text-label text-ink-muted">
+                  거점 운영을 중단하고 현장앱에 즉시 전파합니다. 대상 거점의 근무공백 경보는 중단 중 멈춥니다.
+                </p>
+                {/* 사유 프리셋 — 범위가 다르다. 기상은 야외 일부, 비상사태는 전 거점. */}
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {SUSPEND_PRESETS.map((p) => (
+                    <button
+                      key={p.label}
+                      onClick={() => { setSusReason(p.reason); setSusZones(p.zoneIds) }}
+                      className="rounded-md border border-line bg-surface px-2 py-1 text-caption font-semibold text-ink-muted transition hover:bg-neutral-100"
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  value={susReason}
+                  onChange={(e) => setSusReason(e.target.value)}
+                  placeholder="중단 사유 (예: 강풍특보 — 야외 구조물 위험)"
+                  className="mt-2 w-full rounded-lg border border-line bg-surface px-3 py-2 text-label outline-none focus:border-primary-600"
+                />
+                <div className="mt-2 flex items-center justify-between">
+                  <span className="text-caption font-semibold text-ink-muted">
+                    대상 {susZones === null ? '전 거점(토털)' : `${susZones.length}개 거점`}
+                  </span>
+                  <button
+                    onClick={() => setSusZones(susZones === null ? [] : null)}
+                    className="text-caption font-semibold text-primary-700 hover:underline"
+                  >
+                    {susZones === null ? '거점 골라서 중단' : '전 거점으로 중단'}
+                  </button>
+                </div>
+                {susZones !== null && (
+                  <div className="mt-1.5 max-h-40 overflow-auto rounded-lg border border-line-soft p-2">
+                    {zones.map((z) => (
+                      <label key={z.id} className="flex cursor-pointer items-center gap-2 py-1 text-caption text-ink-base">
+                        <input
+                          type="checkbox"
+                          checked={susZones.includes(z.id)}
+                          onChange={(e) =>
+                            setSusZones(e.target.checked ? [...susZones, z.id] : susZones.filter((x) => x !== z.id))
+                          }
+                        />
+                        {z.name}
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <button
+                  onClick={async () => { await declareSuspension(susReason.trim(), susZones); setSusReason(''); setSusZones(null) }}
+                  disabled={!susReason.trim() || (susZones !== null && susZones.length === 0)}
+                  className="mt-3 w-full rounded-lg bg-warn px-4 py-2.5 text-label font-bold text-white transition hover:bg-warn/90 disabled:opacity-40"
+                >
+                  운영중단 전파
+                </button>
               </>
             )}
           </Section>

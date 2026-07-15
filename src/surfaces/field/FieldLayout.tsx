@@ -3,6 +3,7 @@ import { loadSession, saveSession, clearSession } from '../../lib/session'
 import type { FieldSession } from '../../lib/session'
 import { useCapture } from '../../lib/capture'
 import Identify from './Identify'
+import { SafetyBanner } from './SafetyBanner'
 import VolunteerHome from './VolunteerHome'
 import ManagerHome from './ManagerHome'
 
@@ -34,6 +35,10 @@ export default function FieldLayout() {
           capture ? 'h-[915px] w-[412px]' : 'h-[100dvh] w-full max-w-[460px]'
         }`}
       >
+        {/* 운영중단 전파 — 역할 분기보다 위. 봉사자·관리자·신원확인 전부에 뜬다.
+            로그인 전에도 띄운다: 지금 막 앱을 여는 사람이 가장 먼저 알아야 할 상태다. */}
+        <SafetyBanner assignmentId={session?.assignmentId} />
+
         {!session ? (
           <Identify onLogin={onLogin} />
         ) : isManager ? (
