@@ -376,10 +376,13 @@ export const foodVendors: StoredVendor[] = [
 export const FOOD_PARASOLS = 80 // 음식판매·휴게구역 파라솔(본공고 3-1 정량 스펙)
 
 // ⑥ 공지·안내기준 ───────────────────────────────────────
+// audience = 구분 × 역할 × 거점(types.ts §Audience). {} = 전원.
 export const notices: Notice[] = [
-  { id: 'nt-1', title: '오후조 교대 안내', body: '14:00 오전조 퇴근·오후조 투입 완료 확인. 미출근 인력 즉시 예비 대체.', scope: 'all', time: '13:55' },
-  { id: 'nt-2', title: '기상 안내', body: '오후 3시경 강풍 예보 — 야외 포토존·해변거점 안전고지 문안 통일 배포.', scope: 'all', time: '13:50' },
-  { id: 'nt-3', title: '셔틀 운행 안내 문안', body: '방문객 문의 대비 셔틀 배차 간격·정류장 안내 표준 문안.', scope: ['z-info', 'z-market', 'z-gyeongpo'], time: '09:10' },
+  { id: 'nt-1', title: '오후조 교대 안내', body: '14:00 오전조 퇴근·오후조 투입 완료 확인. 미출근 인력 즉시 예비 대체.', audience: {}, time: '13:55' },
+  { id: 'nt-2', title: '기상 안내', body: '오후 3시경 강풍 예보 — 야외 포토존·해변거점 안전고지 문안 통일 배포.', audience: {}, time: '13:50' },
+  { id: 'nt-3', title: '셔틀 운행 안내 문안', body: '방문객 문의 대비 셔틀 배차 간격·정류장 안내 표준 문안.', audience: { zoneIds: ['z-info', 'z-market', 'z-gyeongpo'] }, time: '09:10' },
+  { id: 'nt-4', title: '거점 순회점검 결과 보고 요청', body: '오후조 투입 완료 후 거점별 안전·위생 점검 결과를 15:30까지 본부로 회신.', audience: { roles: ['거점관리자'] }, time: '14:05' },
+  { id: 'nt-5', title: '운영인력 본부 상황공유', body: '금일 방문객 증가 추세 — 민원·물품 지원 요청 대기. 본부 무전 채널 상시 청취.', audience: { kinds: ['운영인력'] }, time: '13:40' },
 ]
 
 // ── 실비 배치계획(5일) — computeExpenses 근거. 월~목 110 · 금 55(1교대). ──

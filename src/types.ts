@@ -226,11 +226,34 @@ export interface FoodSummary {
 }
 
 // ⑥ 공지·안내기준(notices) ───────────────────────────────
+
+// 상황전파 수신자 주소 — 본부→현장 방향의 '누구에게'.
+//
+// 이전 모델은 Notice.scope = 'all' | string[](거점 id) 뿐이라 거점 축밖에 없었다.
+// 그래서 zoneId: null 인 현장운영 12명은 'all' 로 쏴도 구조적으로 수신 대상이 아니었고,
+// '자원봉사자에게만' · '거점관리자에게만' 같은 주소가 아예 표현 불가능했다.
+// → 축을 셋으로 갈랐다: 대상 = 구분 × 역할 × 거점.
+//
+// 규칙: 축이 없으면(undefined) 그 축은 거르지 않는다. 축 '안'은 OR, 축 '사이'는 AND.
+//   {}                                    전원 — 운영총괄이 전 인력에 쏘는 경우
+//   { kinds: ['자원봉사자'] }               자원봉사자 전원(거점 무관 · 예비 포함)
+//   { roles: ['거점관리자'] }               거점관리자 10명
+//   { zoneIds: ['z-info'] }                해당 거점 소속 전원
+//   { kinds: ['자원봉사자'], zoneIds: [x] } x 거점의 자원봉사자만
+//
+// ⚠️ zoneIds 를 지정하면 zoneId: null 인 인력(현장운영·예비)은 제외된다 — 의도된 것이다.
+// 거점을 지목한 공지는 거점에 없는 사람에게 갈 이유가 없다. 그들에게 보내려면 zoneIds 를 비운다.
+export interface Audience {
+  kinds?: StaffKind[]
+  roles?: StaffRole[]
+  zoneIds?: string[]
+}
+
 export interface Notice {
   id: string
   title: string
   body: string
-  scope: 'all' | string[] // 전체 / 특정 거점 id[]
+  audience: Audience
   time: string // HH:mm
 }
 

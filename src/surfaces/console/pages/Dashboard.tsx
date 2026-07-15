@@ -7,6 +7,7 @@ import {
   getAttendanceEvents,
   getIssues,
   getNotices,
+  describeAudience,
   getEducationSummary,
 } from '../../../lib/services'
 import { useLive } from '../../../lib/useLive'
@@ -154,7 +155,7 @@ export default function Dashboard() {
                     </div>
                     <p className="mt-0.5 text-label leading-snug text-ink-base">{n.body}</p>
                     <span className="mt-1 inline-block rounded bg-neutral-100 px-1.5 py-0.5 text-caption text-ink-muted">
-                      {n.scope === 'all' ? '전 거점' : `${n.scope.length}개 거점`}
+                      {describeAudience(n.audience, zones)}
                     </span>
                   </div>
                 ))}

@@ -53,6 +53,8 @@ import type {
   DutyLogEntry,
   Issue,
   Notice,
+  Audience,
+  StaffKind,
   OpsAlert,
   KpiSummary,
   ExpenseSummary,
@@ -306,6 +308,38 @@ export async function updateIssueStatus(id: string, status: IssueStatus): Promis
 }
 export async function getNotices(): Promise<Notice[]> {
   return rawNotices()
+}
+
+// ── 상황전파 수신자 판정(R5) ─────────────────────────────
+// 축이 비면 그 축은 안 거른다. 축 안은 OR, 축 사이는 AND. 전부 비면 전원.
+export function matchesAudience(
+  person: { kind: StaffKind; role: StaffRole; zoneId: string | null },
+  aud: Audience,
+): boolean {
+  if (aud.kinds?.length && !aud.kinds.includes(person.kind)) return false
+  if (aud.roles?.length && !aud.roles.includes(person.role)) return false
+  // 거점을 지목한 공지는 거점 없는 인력(현장운영·예비)에게 가지 않는다.
+  if (aud.zoneIds?.length && (person.zoneId === null || !aud.zoneIds.includes(person.zoneId))) return false
+  return true
+}
+
+// 특정 배치(=사람)가 받아야 할 공지 — 현장앱 수신함.
+export async function getNoticesFor(assignmentId: string): Promise<Notice[]> {
+  const a = rawAssignments().find((x) => x.id === assignmentId)
+  if (!a) return []
+  return rawNotices().filter((n) => matchesAudience(a, n.audience))
+}
+
+// 수신자 주소를 사람이 읽는 한 줄로 — 콘솔 배지·현장앱 표기 공유.
+export function describeAudience(aud: Audience, zones: Zone[]): string {
+  const parts: string[] = []
+  if (aud.kinds?.length) parts.push(aud.kinds.join('·'))
+  if (aud.roles?.length) parts.push(aud.roles.join('·'))
+  if (aud.zoneIds?.length) {
+    const names = aud.zoneIds.map((id) => zones.find((z) => z.id === id)?.name ?? id)
+    parts.push(names.length <= 2 ? names.join('·') : `${names.length}개 거점`)
+  }
+  return parts.length ? parts.join(' / ') : '전원'
 }
 
 // ── 파생 뷰 계산기(R5) ──────────────────────────────────
