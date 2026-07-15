@@ -3,7 +3,7 @@ import { getAssignments, getZones } from '../../../lib/services'
 import { useLive, useNowMin } from '../../../lib/useLive'
 import type { Assignment, DutyStatus, Shift } from '../../../types'
 import { PageHeader } from '../../../components/layout'
-import { StatusBadge, listNo } from '../../../components/ui'
+import { StatusBadge, listNo, usePageState, paginate, Pagination } from '../../../components/ui'
 import { toMin, fmtDur } from '../../../lib/time'
 import PersonDetailModal from './PersonDetail'
 
@@ -34,6 +34,8 @@ export default function People() {
   const [q, setQ] = useState('')
   const [zoneFilter, setZoneFilter] = useState('all')
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'no', dir: 1 })
+  // 훅은 조기 반환(`if (!assignments)`) 앞에서 — 필터가 바뀌면 1페이지로.
+  const pg = usePageState(`${q}|${status}|${shift}|${zoneFilter}|${reserveOnly}`)
 
   const now = useNowMin()
   const assignments = useLive(getAssignments)
@@ -80,6 +82,8 @@ export default function People() {
             default: return 0
           }
         })
+
+  const page = paginate(rows, pg.page)
 
   const toggleSort = (k: SortKey) =>
     setSort((s) => (s.key === k ? { key: k, dir: (s.dir === 1 ? -1 : 1) as 1 | -1 } : { key: k, dir: 1 }))
@@ -175,6 +179,16 @@ export default function People() {
       </div>
 
       {/* 로스터 테이블 (컬럼 헤더 클릭 = 소팅) */}
+      <div className="mb-2 flex justify-end">
+        <Pagination
+          page={page.page}
+          pages={page.pages}
+          start={page.start}
+          shown={page.slice.length}
+          total={page.total}
+          onChange={pg.setPage}
+        />
+      </div>
       <div className="card overflow-hidden">
         <table className="w-full text-label">
           <thead>
@@ -194,14 +208,14 @@ export default function People() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((a, i) => {
+            {page.slice.map((a, i) => {
               return (
                 <tr
                   key={a.id}
                   onClick={() => setSelectedId(a.id)}
                   className="group cursor-pointer border-b border-line-soft transition last:border-0 hover:bg-primary-50/50"
                 >
-                  <td className="tnum px-3 py-2.5 text-right text-ink-faint">{listNo(i)}</td>
+                  <td className="tnum px-3 py-2.5 text-right text-ink-faint">{listNo(page.start + i)}</td>
                   <td className="px-3 py-2.5">
                     <span className={`rounded-md px-1.5 py-0.5 text-caption font-semibold ${a.shift === 'AM' ? 'bg-info-soft text-info' : 'bg-primary-50 text-primary-700'}`}>
                       {shiftKo(a.shift)}

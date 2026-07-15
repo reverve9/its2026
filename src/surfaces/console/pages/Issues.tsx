@@ -3,6 +3,7 @@ import { getIssues, getZones, updateIssueStatus } from '../../../lib/services'
 import { useLive } from '../../../lib/useLive'
 import type { IssueType, IssueStatus } from '../../../types'
 import { PageHeader, Section } from '../../../components/layout'
+import { usePageState, paginate, Pagination } from '../../../components/ui'
 
 const TYPES: (IssueType | 'all')[] = ['all', '민원', '분실물', '미아', '시설이상', '안전사고']
 const STATUS: (IssueStatus | 'all')[] = ['all', 'received', 'in_progress', 'resolved']
@@ -23,8 +24,10 @@ export default function Issues() {
   const [type, setType] = useState<IssueType | 'all'>('all')
   const [status, setStatus] = useState<IssueStatus | 'all'>('all')
 
+  const pg = usePageState(`${type}|${status}`) // 필터가 바뀌면 1페이지로
   const zoneName = (id: string) => zones.find((z) => z.id === id)?.name ?? id
   const rows = issues.filter((i) => (type === 'all' || i.type === type) && (status === 'all' || i.status === status))
+  const page = paginate(rows, pg.page)
   const count = (s: IssueStatus) => issues.filter((i) => i.status === s).length
 
   const next = (s: IssueStatus): IssueStatus | null => (s === 'received' ? 'in_progress' : s === 'in_progress' ? 'resolved' : null)
@@ -60,7 +63,20 @@ export default function Issues() {
         ))}
       </div>
 
-      <Section title={`접수 내역 (${rows.length})`} bodyClassName="p-0">
+      <Section
+        title={`접수 내역 (${rows.length})`}
+        bodyClassName="p-0"
+        right={
+          <Pagination
+            page={page.page}
+            pages={page.pages}
+            start={page.start}
+            shown={page.slice.length}
+            total={page.total}
+            onChange={pg.setPage}
+          />
+        }
+      >
         <table className="w-full text-label">
           <thead>
             <tr className="border-b border-line bg-neutral-50 text-caption text-ink-muted">
@@ -73,7 +89,7 @@ export default function Issues() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((i) => {
+            {page.slice.map((i) => {
               const nx = next(i.status)
               return (
                 <tr key={i.id} className="border-b border-line-soft last:border-0">

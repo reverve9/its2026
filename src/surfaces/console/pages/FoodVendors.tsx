@@ -3,6 +3,7 @@ import { getFoodVendors, getFoodSummary, getFoodParasols, registerVendorDoc } fr
 import { useLive } from '../../../lib/useLive'
 import type { FoodVendor, VendorKind } from '../../../types'
 import { PageHeader, Section } from '../../../components/layout'
+import { usePageState, paginate, Pagination } from '../../../components/ui'
 
 // 업체 등록 현황 — 먹거리 입점업체(푸드트럭 5 · 음식부스 5) 정보·구비서류 등록 대장.
 // 클라이언트(업체)앱이 없으므로 업체 셀프 등록이 아니라 운영본부가 대신 등록·관리한다.
@@ -145,6 +146,9 @@ export default function FoodVendors() {
   const [kind, setKind] = useState<VendorKind>('truck')
   const [pendingOnly, setPendingOnly] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // 훅은 조기 반환(`if (!vendors || !summary)`) 앞에서 — 탭·필터가 바뀌면 1페이지로.
+  // 현재 시드는 탭당 5행이라 컨트롤이 렌더되지 않는다(1페이지). 업체가 늘면 그대로 동작.
+  const pg = usePageState(`${kind}|${pendingOnly}`)
 
   const vendors = useLive(() => getFoodVendors())
   const summary = useLive(getFoodSummary)
@@ -153,6 +157,7 @@ export default function FoodVendors() {
 
   const docDone = (v: FoodVendor) => v.docs.filter((d) => d.done).length
   const rows = vendors.filter((v) => v.kind === kind && (!pendingOnly || docDone(v) < v.docs.length))
+  const page = paginate(rows, pg.page)
   const pct = summary.docTotal ? Math.round((summary.docDone / summary.docTotal) * 100) : 0
 
   return (
@@ -206,6 +211,16 @@ export default function FoodVendors() {
       </div>
 
       {/* 등록 대장 */}
+      <div className="mb-2 flex justify-end">
+        <Pagination
+          page={page.page}
+          pages={page.pages}
+          start={page.start}
+          shown={page.slice.length}
+          total={page.total}
+          onChange={pg.setPage}
+        />
+      </div>
       <div className="card overflow-hidden">
         <table className="w-full text-label">
           <thead>
@@ -221,7 +236,7 @@ export default function FoodVendors() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((v) => {
+            {page.slice.map((v) => {
               const done = docDone(v)
               const complete = done === v.docs.length
               return (
