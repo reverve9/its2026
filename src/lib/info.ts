@@ -9,7 +9,7 @@ export interface Contact {
 
 export const EMERGENCY_CONTACTS: Contact[] = [
   { label: '현장 운영본부', phone: '033-000-1000', note: '전 거점 총괄·근무공백 대응' },
-  { label: '안전상황실', phone: '033-000-1119', note: '사고·작업중지 발령' },
+  { label: '안전상황실', phone: '033-000-1119', note: '사고 접수·안전 조치' },
   { label: '의료지원반', phone: '033-000-1004', note: '응급·부상 연계' },
   { label: '강릉시 종합상황실', phone: '033-000-2000', note: '유관기관 연계' },
 ]

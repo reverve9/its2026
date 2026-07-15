@@ -17,7 +17,8 @@
 // 기준 = 2026-10-21(수) 14:20 → 오전조 퇴근완료, 오후조 출근 중(미출근 3명 = B플로우 트리거).
 
 import type {
-  Zone, Issue, Notice, Coords, VendorDoc, PayoutInfo, EducationRecord, Employment, CheckMethod,
+  Zone, Issue, Notice, Coords, VendorDoc, PayoutInfo, EducationRecord, Employment,
+  ScanEvent, ScanKind,
 } from '../types'
 import type { StoredAssignment, StoredEvent, StoredDutyProfile, StoredVendor } from '../lib/store'
 
@@ -31,22 +32,24 @@ export const SEED_DATES = [D1, D2, SEED_DATE] as const
 // ── 시각 헬퍼(시드 전용, clock 비의존) ────────────────────
 const H = (h: number, m = 0) => h * 60 + m
 
-// ① 거점 — 행사장 5구역(유인 스캔) + 관광지 6거점(무인 GPS). 조당 정원(quota) 합계 = 55.
+// ① 거점 — 행사장 5구역 + 관광지 6거점. 조당 정원(quota) 합계 = 55.
+//   ※ 유인/무인 구분(checkMode)은 없다. 출결은 전 거점 GPS 셀프 단일이고, 거점관리자 11명이
+//     전 거점에 상주하므로 '무인 거점'이 존재하지 않는다. kind 는 장소 성격일 뿐이다.
 //   행사장 30(8+6+6+5+5) · 관광지 25(4+4+4+5+4+4). 두 조 동일 배분 → 총 110.
 //   ※ 스카시 포토존은 종합안내소 구역 내부 → 별도 거점 아님.
 //   ※ 조직위 운영 구역은 우리 배치 대상 아님 → 거점 없음.
 export const zones: Zone[] = [
-  { id: 'z-info', name: '종합안내소', kind: 'venue', checkMode: 'manager_scan', coords: { lat: 37.7726, lng: 128.9476 }, geofenceRadius: 60, opWindow: { start: '10:00', end: '18:00' }, status: 'open', quota: 8, present: 0 },
-  { id: 'z-stage', name: '공연구역', kind: 'venue', checkMode: 'manager_scan', coords: { lat: 37.7731, lng: 128.9481 }, geofenceRadius: 80, opWindow: { start: '10:00', end: '18:00' }, status: 'open', quota: 6, present: 0 },
-  { id: 'z-food', name: '음식판매·휴게구역', kind: 'venue', checkMode: 'manager_scan', coords: { lat: 37.7719, lng: 128.9469 }, geofenceRadius: 70, opWindow: { start: '10:00', end: '18:00' }, status: 'open', quota: 6, present: 0 },
-  { id: 'z-photo', name: 'ITS 상징 포토존', kind: 'venue', checkMode: 'manager_scan', coords: { lat: 37.7724, lng: 128.9487 }, geofenceRadius: 40, opWindow: { start: '10:00', end: '18:00' }, status: 'open', quota: 5, present: 0 },
-  { id: 'z-support', name: '행사지원구역', kind: 'venue', checkMode: 'manager_scan', coords: { lat: 37.7733, lng: 128.9464 }, geofenceRadius: 60, opWindow: { start: '10:00', end: '18:00' }, status: 'open', quota: 5, present: 0 },
-  { id: 'z-market', name: '중앙시장·월화거리', kind: 'tourist', checkMode: 'self_gps', coords: { lat: 37.7519, lng: 128.8961 }, geofenceRadius: 120, opWindow: { start: '10:00', end: '18:00' }, status: 'open', quota: 4, present: 0 },
-  { id: 'z-gyeongpo', name: '경포해변', kind: 'tourist', checkMode: 'self_gps', coords: { lat: 37.7955, lng: 128.9106 }, geofenceRadius: 150, opWindow: { start: '10:00', end: '18:00' }, status: 'open', quota: 4, present: 0 },
-  { id: 'z-anmok', name: '안목해변', kind: 'tourist', checkMode: 'self_gps', coords: { lat: 37.7735, lng: 128.9473 }, geofenceRadius: 120, opWindow: { start: '10:00', end: '18:00' }, status: 'open', quota: 4, present: 0 },
-  { id: 'z-jumunjin', name: '주문진항·수산시장', kind: 'tourist', checkMode: 'self_gps', coords: { lat: 37.8925, lng: 128.8317 }, geofenceRadius: 130, opWindow: { start: '10:00', end: '17:00' }, status: 'open', quota: 5, present: 0 },
-  { id: 'z-gangmun', name: '강문해변', kind: 'tourist', checkMode: 'self_gps', coords: { lat: 37.7907, lng: 128.9169 }, geofenceRadius: 120, opWindow: { start: '11:00', end: '18:00' }, status: 'open', quota: 4, present: 0 },
-  { id: 'z-ojuk', name: '오죽헌시립박물관', kind: 'tourist', checkMode: 'self_gps', coords: { lat: 37.7794, lng: 128.8784 }, geofenceRadius: 100, opWindow: { start: '10:00', end: '17:00' }, status: 'open', quota: 4, present: 0 },
+  { id: 'z-info', name: '종합안내소', kind: 'venue', coords: { lat: 37.7726, lng: 128.9476 }, geofenceRadius: 60, opWindow: { start: '10:00', end: '18:00' }, status: 'open', quota: 8, present: 0 },
+  { id: 'z-stage', name: '공연구역', kind: 'venue', coords: { lat: 37.7731, lng: 128.9481 }, geofenceRadius: 80, opWindow: { start: '10:00', end: '18:00' }, status: 'open', quota: 6, present: 0 },
+  { id: 'z-food', name: '음식판매·휴게구역', kind: 'venue', coords: { lat: 37.7719, lng: 128.9469 }, geofenceRadius: 70, opWindow: { start: '10:00', end: '18:00' }, status: 'open', quota: 6, present: 0 },
+  { id: 'z-photo', name: 'ITS 상징 포토존', kind: 'venue', coords: { lat: 37.7724, lng: 128.9487 }, geofenceRadius: 40, opWindow: { start: '10:00', end: '18:00' }, status: 'open', quota: 5, present: 0 },
+  { id: 'z-support', name: '행사지원구역', kind: 'venue', coords: { lat: 37.7733, lng: 128.9464 }, geofenceRadius: 60, opWindow: { start: '10:00', end: '18:00' }, status: 'open', quota: 5, present: 0 },
+  { id: 'z-market', name: '중앙시장·월화거리', kind: 'tourist', coords: { lat: 37.7519, lng: 128.8961 }, geofenceRadius: 120, opWindow: { start: '10:00', end: '18:00' }, status: 'open', quota: 4, present: 0 },
+  { id: 'z-gyeongpo', name: '경포해변', kind: 'tourist', coords: { lat: 37.7955, lng: 128.9106 }, geofenceRadius: 150, opWindow: { start: '10:00', end: '18:00' }, status: 'open', quota: 4, present: 0 },
+  { id: 'z-anmok', name: '안목해변', kind: 'tourist', coords: { lat: 37.7735, lng: 128.9473 }, geofenceRadius: 120, opWindow: { start: '10:00', end: '18:00' }, status: 'open', quota: 4, present: 0 },
+  { id: 'z-jumunjin', name: '주문진항·수산시장', kind: 'tourist', coords: { lat: 37.8925, lng: 128.8317 }, geofenceRadius: 130, opWindow: { start: '10:00', end: '17:00' }, status: 'open', quota: 5, present: 0 },
+  { id: 'z-gangmun', name: '강문해변', kind: 'tourist', coords: { lat: 37.7907, lng: 128.9169 }, geofenceRadius: 120, opWindow: { start: '11:00', end: '18:00' }, status: 'open', quota: 4, present: 0 },
+  { id: 'z-ojuk', name: '오죽헌시립박물관', kind: 'tourist', coords: { lat: 37.7794, lng: 128.8784 }, geofenceRadius: 100, opWindow: { start: '10:00', end: '17:00' }, status: 'open', quota: 4, present: 0 },
 ]
 
 // ── 이름·연락처·외국어 결정적 생성(랜덤·시각 비의존) ──────
@@ -106,7 +109,7 @@ const eduOf = (i: number): EducationRecord[] => {
 // 대부분 무결근, 일부만 1~2일 결근(집행 잔액이 0이 아니게 하는 변주).
 const absentDaysOf = (i: number) => (i % 37 === 0 ? 2 : i % 11 === 0 ? 1 : 0)
 
-// 거점 좌표 근처의 GPS 좌표(무인 체크인 이벤트용) — 결정적 미세 변위.
+// 거점 좌표 근처의 GPS 좌표(체크인 이벤트용) — 결정적 미세 변위.
 const nearby = (c: Coords, i: number): Coords => ({
   lat: +(c.lat + ((i % 5) - 2) * 0.0002).toFixed(6),
   lng: +(c.lng + (((i * 3) % 5) - 2) * 0.0002).toFixed(6),
@@ -117,7 +120,7 @@ const nearby = (c: Coords, i: number): Coords => ({
 // 직원은 급여라 정산에서 미산정, 일용만 시급 기준으로 산정한다.
 //
 // 거점관리자 11명 중 직원 2명(관리자 순번 1·2 = 종합안내소·공연구역).
-// 나머지 9명은 일용 — 유인 거점 스캔·순회는 일용으로 충당하는 현실 구성.
+// 나머지 9명은 일용 — 거점 상주·대면 확인은 일용으로 충당하는 현실 구성.
 const MANAGER_EMPLOYEE_SEQ = new Set([1, 2])
 
 // 현장운영 11명 — 운영본부 상주. 직원 4(책임 직무) + 일용 7.
@@ -179,6 +182,7 @@ const pastNoShow = (g: number, date: string): boolean => {
 const assignments: StoredAssignment[] = []
 const events: StoredEvent[] = []
 const dutyProfiles: StoredDutyProfile[] = []
+const volunteersOf: Record<string, { AM: string[]; PM: string[] }> = {} // zoneId → 조별 봉사자 배치 id
 let gid = 0
 let eid = 0
 
@@ -203,7 +207,6 @@ function pushEvent(
     kind,
     date,
     timeMin,
-    method: extra.method ?? (zoneById(a.zoneId).checkMode === 'self_gps' ? 'gps' : 'scan'),
     slot: extra.slot,
     gps: extra.gps,
     anomaly: extra.anomaly,
@@ -218,33 +221,33 @@ const zoneById = (id: string) => zones.find((z) => z.id === id)!
 // 안 그러면 스크러버를 10/20 17:00 으로 밀었을 때 오후조 전원이 '정시체크 누락'으로 뜬다.
 function seedDutyEvents(a: StoredAssignment, z: Zone, g: number, k: string, date: string) {
   const isToday = date === SEED_DATE
-  const isGps = z.checkMode === 'self_gps'
-  const method: CheckMethod = isGps ? 'gps' : 'scan'
-  const gps = isGps ? nearby(z.coords, g) : undefined
+  // 전 거점 GPS 셀프 — 이전엔 checkMode 로 유인 거점(scan)과 갈렸고, 유인 거점 이벤트에는
+  // gps 좌표가 아예 없었다. 그 경로가 사라져 전 거점이 좌표를 남긴다.
+  const gps = nearby(z.coords, g)
   // 시각 변주에 날짜를 섞는다 — 안 그러면 3일이 초 단위까지 똑같아 복붙 티가 난다.
   const j = g + SEED_DATES.indexOf(date as (typeof SEED_DATES)[number]) * 3
 
   if (a.shift === 'AM') {
     // 오전조: 출근(09:50~09:58, 첫 슬롯 前) → 정시 10·11·12·13 → 퇴근(13:58~14:06)
-    pushEvent(a, 'checkin', date, H(9, 50) + (j % 9), { method, gps: gps && nearby(z.coords, j + 1) })
+    pushEvent(a, 'checkin', date, H(9, 50) + (j % 9), { gps: gps && nearby(z.coords, j + 1) })
     for (const slot of AM_SLOTS) {
       if (isToday && AM_MISSED.has(k) && slot === H(13)) continue // 13:00 누락(이력)
-      pushEvent(a, 'hourly', date, slot + (j % 4), { slot, method, gps: gps && nearby(z.coords, j + slot) })
+      pushEvent(a, 'hourly', date, slot + (j % 4), { slot, gps: gps && nearby(z.coords, j + slot) })
     }
-    pushEvent(a, 'checkout', date, H(13, 58) + (j % 8), { method })
+    pushEvent(a, 'checkout', date, H(13, 58) + (j % 8))
   } else {
     // 오후조: 출근(13:52~14:00, 첫 슬롯 前) → 정시 14·15·16·17 → 퇴근(17:58~18:06)
     const anomaly =
       isToday && k === 'z-market|PM|1'
         ? `지오펜스 경계(${z.geofenceRadius}m) 근접 — 이상치 기록(차단 아님)`
         : undefined
-    pushEvent(a, 'checkin', date, H(13, 52) + (j % 9), { method, gps: gps && nearby(z.coords, j + 2), anomaly })
+    pushEvent(a, 'checkin', date, H(13, 52) + (j % 9), { gps: gps && nearby(z.coords, j + 2), anomaly })
     for (const slot of PM_SLOTS) {
       if (isToday && slot > H(14)) break // 오늘은 14:20 — 15시 이후는 아직 오지 않은 슬롯
       if (isToday && PM_MISSED.has(k) && slot === H(14)) continue
-      pushEvent(a, 'hourly', date, slot + (j % 5), { slot, method, gps: gps && nearby(z.coords, j + slot) })
+      pushEvent(a, 'hourly', date, slot + (j % 5), { slot, gps: gps && nearby(z.coords, j + slot) })
     }
-    if (!isToday) pushEvent(a, 'checkout', date, H(17, 58) + (j % 8), { method })
+    if (!isToday) pushEvent(a, 'checkout', date, H(17, 58) + (j % 8))
   }
 }
 
@@ -273,6 +276,7 @@ for (const z of zones) {
         payout: payoutOf(gid, nameOf(gid)),
       }
       assignments.push(a)
+      ;(volunteersOf[z.id] ??= { AM: [], PM: [] })[shift].push(a.id)
 
       // 라이브 — 날짜마다 따로. 미출근이면 이벤트 없이 프로필만 남는다(미출근의 증거는 부재다).
       for (const date of SEED_DATES) {
@@ -308,9 +312,11 @@ for (const z of zones) {
 //
 // 활동물품·정산서류·교육이수는 자원봉사자 항목이므로 부여하지 않는다.
 let mgrSeq = 0
+const managerOf: Record<string, string> = {} // zoneId → 관리자 배치 id(스캔을 찍는 사람)
 for (const z of zones) {
   gid++
   mgrSeq++
+  managerOf[z.id] = `as-${gid}`
   assignments.push({
     id: `as-${gid}`,
     personId: `p-${gid}`,
@@ -380,7 +386,54 @@ for (let r = 0; r < RESERVE_COUNT; r++) {
   })
 }
 
-export { assignments, events, dutyProfiles }
+// ── ⑦ 스캔 시드(QR = 서명) ──────────────────────────────
+// 스캔은 증거 전용 층이다 — 아무것도 구동하지 않는다. 출결도 물품지급 현황도 안 건드린다.
+// 그래서 이 시드가 없어도 화면은 전부 정상이고, 있으면 '사후 대조할 기록'이 생긴다.
+//
+// ⚠️ '활동물품수령'은 일부러 안 심는다. 시드상 활동물품은 10/18 사전 일괄배부(goodsOf)라
+//    행사 당일 수령 서명을 만들면 그 자체가 모순이다. 남은 미지급자 수령은 라이브로 찍는다.
+//
+// 거점 기반이 아니다 — ScanEvent 에 zoneId 가 없다. 아래에서 관리자가 자기 거점 봉사자를
+// 찍는 건 모델의 제약이 아니라 그냥 물리적으로 그렇게 되기 때문이다.
+const scans: ScanEvent[] = []
+let scid = 0
+function pushScan(
+  subjectId: string, scannerId: string, kind: ScanKind, date: string, timeMin: number, note: string, zoneId: string
+) {
+  // 오늘은 14:20 에서 멈춰 있다 — 그 뒤 시각의 서명은 아직 존재하지 않는다.
+  if (date === SEED_DATE && timeMin > H(14, 20)) return
+  scid++
+  const z = zoneById(zoneId)
+  scans.push({
+    id: `sc-${scid}`,
+    idempotencyKey: `seed:${subjectId}:${date}:${kind}:${timeMin}`, // 날짜 없으면 3일치가 충돌한다
+    subjectId, scannerId, kind, note, date, timeMin,
+    gps: nearby(z.coords, scid), // 찍은 사람의 위치. 대면이므로 이 하나로 양쪽이 증명된다
+  })
+}
+
+for (const date of SEED_DATES) {
+  for (const z of zones) {
+    const mgr = managerOf[z.id]
+    const v = volunteersOf[z.id]
+    if (!mgr || !v) continue
+    const d = SEED_DATES.indexOf(date)
+    // 대면확인 — 옛 순회 감사를 대체한다. 관리자가 그 사람 앞에 가서 찍는다.
+    if (v.AM[d % v.AM.length]) pushScan(v.AM[d % v.AM.length], mgr, '대면확인', date, H(11, 10 + d * 7), '정위치 근무 확인', z.id)
+    if (v.PM[(d + 1) % v.PM.length]) pushScan(v.PM[(d + 1) % v.PM.length], mgr, '대면확인', date, H(15, 20 + d * 5), '정위치 근무 확인', z.id)
+    // 현장물품수령 — RFP 11. "근무 기간 중 생수, 간식 등 물품 배부". 반복·정산 무관이라
+    // GoodsIssue(1인 1세트 마스터)로는 표현이 불가능했던 자리다.
+    if (v.AM[(d + 2) % v.AM.length]) pushScan(v.AM[(d + 2) % v.AM.length], mgr, '현장물품수령', date, H(12, 30 + d * 3), d === 2 ? '생수 2병' : '생수 2병·간식', z.id)
+  }
+}
+// 지시인수 — 거점 대면 인스턴트 지시의 확인. 온라인 공지 ack 이 아니다.
+// 오늘 오후 강풍 예보(nt-2, 13:50)에 붙는 현장 지시.
+for (const zid of ['z-gyeongpo', 'z-anmok', 'z-gangmun', 'z-photo']) {
+  const v = volunteersOf[zid]
+  if (v?.PM[0]) pushScan(v.PM[0], managerOf[zid], '지시인수', SEED_DATE, H(14, 12), '강풍 대비 — 야외 게시물 결속·대피 동선 전달', zid)
+}
+
+export { assignments, events, dutyProfiles, scans }
 
 // 교육 이수 시드 — personId 키. 배치가 아니라 '사람'에 귀속되므로 별도 테이블로 둔다.
 // (같은 사람이 여러 날 배치를 가져도 이수는 한 번만 기록된다.)

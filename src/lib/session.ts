@@ -11,8 +11,11 @@
 
 const KEY = 'its2026.field.session'
 
+// assignmentId: null = 슈퍼어드민. 인력현황(=Assignment)에 없는 사람이라 배치 id 가 없다.
+// 신원을 배치에서만 끌어오던 구조라 로그인 자체가 불가능했다(findVolunteer 가 배치를 뒤진다).
+// 8자리 키로 인증하고, 신원은 store 가 아니라 상수로 만든다(getFieldIdentity(null)).
 export interface FieldSession {
-  assignmentId: string
+  assignmentId: string | null
 }
 
 export function loadSession(): FieldSession | null {

@@ -3,8 +3,12 @@
 // 상태·checks·present·KPI 등 파생값은 services가 '현재시각' 기준으로 계산해 채운다.
 
 // ── 공통 ─────────────────────────────────────────────────
-export type ZoneKind = 'venue' | 'tourist' // 행사장(유인) / 관광지(무인)
-export type CheckMode = 'manager_scan' | 'self_gps' // 유인 관리자 스캔 / 무인 GPS 셀프
+export type ZoneKind = 'venue' | 'tourist' // 행사장 / 관광지
+//
+// ⚠️ CheckMode('manager_scan' | 'self_gps')는 폐기됐다. 되살리지 말 것.
+// QR 출결을 버리면서(아래 ScanKind 주석) 전 거점이 GPS 셀프 단일 경로가 됐고,
+// 거점관리자 11명이 전 거점에 상주하게 되면서 '무인 거점'이라는 전제 자체가 없어졌다.
+//
 // 운영 전 / 운영 중 / 운영 종료 / 운영중단(본부 발령 — 시간이 아니라 조치로 닫힌 상태)
 // 'closed'(운영시간 종료)와 'suspended'(중단 발령)는 다르다 — 전자는 예정된 끝, 후자는 개입이다.
 export type ZoneStatus = 'before' | 'open' | 'closed' | 'suspended'
@@ -30,9 +34,8 @@ export interface Zone {
   id: string
   name: string
   kind: ZoneKind
-  checkMode: CheckMode
   coords: Coords
-  geofenceRadius: number // m — 무인 GPS 판정 반경
+  geofenceRadius: number // m — GPS 판정 반경(전 거점 공통). 벗어나면 anomaly 기록, 차단은 아니다
   opWindow: { start: string; end: string } // HH:mm — 거점별 운영시간 윈도우
   status: ZoneStatus // 파생(현재시각 vs opWindow). 공백·인원 집계는 'open'만 대상
   quota: number // 조당 정원(운영 중 목표 인원)
@@ -61,7 +64,7 @@ export interface Assignment {
   role: StaffRole
   employment?: Employment // 운영인력만 — 자원봉사자는 고용관계가 없으므로 undefined
   shift: Shift // 오전조/오후조
-  date: string // YYYY-MM-DD — 5일치 구분(2026-10-19 ~ 2026-10-23)
+  date: string // YYYY-MM-DD — 파생: '지금 보고 있는 날짜'. 배치(현황)는 5일 고정이라 날짜가 없다
   isReserve: boolean // 예비인력(결원·공백 대비)
   status: DutyStatus // 파생(현재시각 기준)
   lang?: string[] // 가능 외국어
@@ -153,17 +156,57 @@ export interface Readiness {
   education: EducationRecord[] // 이수한 것만 담는다(없으면 미이수)
 }
 
-// ③ 출결 이벤트(scan/gps) — 실시간 로그·멱등 ─────────────
-export type CheckMethod = 'scan' | 'gps'
+// ③ 출결 이벤트 — 실시간 로그·멱등 ─────────────────────
+//
+// ⚠️ CheckMethod('scan' | 'gps')는 폐기됐다. 출결은 전 거점 GPS 셀프 단일 경로라
+// 방식을 기록할 갈래가 없다. 'scan'(관리자 QR 스캔)이 사라지자 생산자가 0인 죽은 변종이
+// 됐고, 값이 하나뿐인 필드를 화면에 배지로 띄우는 건 정보가 아니라 장식이다.
 export interface AttendanceEvent {
   id: string
   idempotencyKey: string // 멱등키(중복 방지, R4)
   personName: string
   zoneId: string
-  method: CheckMethod
   time: string // HH:mm
   gps?: Coords
   anomaly?: string // 이상치 플래그(차단 아님, 기록만)
+}
+
+// ③-2 스캔 이벤트(QR = 서명) ────────────────────────────
+// QR 은 출결 수단이 아니다. 출결은 GPS 셀프 단일 경로다.
+//
+// 왜 출결에서 뺐나 — RFP(과업지시서·제안요청서) 전문에 QR·스캔·앱은 0건이고, 출결 요구는
+// "자원봉사자 출결 확인"뿐 방법 지정이 없다. 즉 QR 도 GPS 도 전부 우리 설계 선택이었고,
+// 그중 QR 이 명백히 약했다: GPS 는 checkGeofence 로 위치를 검증하는데 관리자 스캔은 검증이
+// 아예 없었고, QR 값이 정적 assignmentId 라 스크린샷만 보내도 대리 출근이 됐다.
+// 셀프 출결이 안 되는 상황은 예외지 병렬 주경로를 둘 이유가 아니다 — 예외는 관리자가
+// 콘솔에서 수동 처리하고, 그게 RFP 의 "거점별 담당자가 출결을 관리"다.
+//
+// 그럼 QR 은 무엇인가 — 서명이다. "명령 인수 · 접수 · 물품수령증의 사인의 온라인 역할".
+// 네 용도가 전부 같은 문장이다: "이 사람이, 이 시각에, 여기서, 이걸 받았다."
+// 서명의 주인은 수령자이고 건네주는 쪽이 찍는다 → QR 은 봉사자(수령자)에게 붙는다.
+//
+// ⚠️ '지시인수'는 온라인 공지 수신확인(ack)이 아니다. 거점에서 대면으로 이뤄지는 인스턴트
+// 지시의 확인이다 — 관리자가 직접 말하고 찍어 "내가 이 사람에게 전달했다"를 남긴다.
+// 온라인 공지 ack 은 여전히 별개 미결 문제다.
+//
+// ⚠️ '대면확인'이 옛 순회 감사를 대체한다. 랜덤 모달의 [정위치]/[불일치] 이분법은 없앴다 —
+// 자리에 앉아서 클릭만 해도 통과하는 가짜 대면이었기 때문이다. 이제 그 사람 앞에 가서
+// 찍어야 하고, 불일치는 '스캔 없음 = 기록 없음'으로 표현된다.
+export type ScanKind = '활동물품수령' | '현장물품수령' | '지시인수' | '대면확인'
+
+export interface ScanEvent {
+  id: string
+  idempotencyKey: string // 멱등키(중복 방지, R4)
+  subjectId: string // 서명한 사람 = QR 주인(배치 id). 이 스캔의 귀속처
+  scannerId: string | null // 찍은 사람. 슈퍼어드민은 배치가 없어 null 가능
+  kind: ScanKind
+  note?: string // 세부 자유 텍스트 — '생수 2병' · '강풍 대피 지시 전달'
+  // 직무별 데이터 모델을 만들지 않는 이유가 이 한 칸이다. 물품 관리든 본부 지원이든
+  // 같은 스캐너 + 다른 note. 덕분에 현장운영 11명의 실제 직무를 몰라도 착수할 수 있었다.
+  date: string // 라이브 사실 — 이벤트는 날짜를 갖는다(현황은 5일 고정)
+  timeMin: number
+  gps?: Coords // 찍은 사람의 위치. 대면이므로 이 하나로 양쪽이 증명된다
+  anomaly?: string // 대상 봉사자의 거점 지오펜스를 벗어남 등. 기록만, 차단 아님
 }
 
 // 개인 근퇴 타임라인 (출결 + 상태전환 — 개인 상세용 파생)
@@ -171,7 +214,6 @@ export interface DutyLogEntry {
   time: string // HH:mm
   label: string // '출근 체크인' · '휴게 시작' · '휴게 종료·복귀' · '이동' · '퇴근'
   status: DutyStatus // 이 이벤트 이후 상태
-  via?: CheckMethod // 체크인/아웃 방식
   note?: string
 }
 
@@ -182,7 +224,10 @@ export interface Issue {
   id: string
   idempotencyKey?: string // 멱등키(R4 — reportIssue 발급)
   type: IssueType
-  zoneId: string
+  // null = 운영본부. 이슈는 거점 사실이 아니다 — 거점에서 나기도 하고 본부에서 나기도 한다.
+  // 이전엔 string(필수)이라 거점 없는 운영인력(현장운영 11명·슈퍼어드민)이 구조적으로
+  // 이슈를 못 올렸고, 그래서 현장앱의 이슈 보고 카드가 거점 게이트 안에 갇혀 있었다.
+  zoneId: string | null
   status: IssueStatus
   time: string // HH:mm
   message: string

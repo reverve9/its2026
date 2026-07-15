@@ -3,12 +3,14 @@
 // 쓰기는 명령형 함수(R3) + 멱등키(R4). 나중에 Supabase 로 교체해도 이 시그니처는 불변.
 
 import { getNowMin, getNowDate, getNowHM, fmtHM } from './clock'
-import { distanceM } from './geo'
+import { distanceM, checkGeofence } from './geo'
 import {
   rawZones,
   rawAssignments,
   rawEvents,
   dutyProfileOf,
+  rawScans,
+  addScan,
   rawIssues,
   rawNotices,
   deploymentPlan,
@@ -42,7 +44,6 @@ import {
   placeReserve,
   hasEventKey,
   rawSafety,
-  setWorkStop,
   setSuspension,
   setHazard,
 } from './store'
@@ -54,6 +55,8 @@ import type {
   DutyLogEntry,
   Issue,
   Notice,
+  ScanEvent,
+  ScanKind,
   Audience,
   StaffKind,
   OpsAlert,
@@ -62,7 +65,6 @@ import type {
   Shift,
   DutyStatus,
   CheckState,
-  CheckMethod,
   Coords,
   IssueStatus,
   GoodsIssue,
@@ -273,7 +275,33 @@ export interface FieldIdentity {
   status?: DutyStatus
 }
 
-export async function getFieldIdentity(assignmentId: string): Promise<FieldIdentity | undefined> {
+// ── 슈퍼어드민 ──────────────────────────────────────────
+// 인력현황(=Assignment)에 없는 사람. 배치가 없으므로 거점도 없고 역할도 없다 —
+// StaffRole 셋(봉사자·거점관리자·현장운영) 중 어느 것도 아니라서 role 을 비운다.
+// 지어낸 역할을 넣으면 화면이 거짓말을 하고, 공지 주소 판정도 오염된다.
+//
+// kind 가 '운영인력'이라 FieldLayout 이 OpsHome 으로 보내고, zoneId 가 null 이라
+// 거점 카드가 안 뜬다 — 특례 분기가 하나도 없다(D12: 카드 게이트는 zoneId).
+//
+// ⚠️ 8자리 키는 하드코딩이다. 백엔드 인증이 아니고 서버 검증도 없다 —
+// 그리고 Supabase 전환 후에도 하드코딩으로 간다(사용자 확정). 결함이 아니라 결정이다:
+// 이 플랫폼은 시연·제안용이라 보호할 자산이 없고, 인증은 '누가 어느 화면을 보는가'만 가른다.
+// 콘솔 계정(lib/consoleAuth.ts)도 같은 방침이다.
+export const SUPER_ADMIN_KEY = '20261019'
+const SUPER_ADMIN: FieldIdentity = {
+  assignmentId: null,
+  personName: '운영본부 관리자',
+  kind: '운영인력',
+  zoneId: null,
+  role: undefined, // 슈퍼어드민은 StaffRole 이 아니다 — 배지는 표시층에서 '관리자'로 찍는다
+}
+
+export async function authSuperAdmin(key: string): Promise<boolean> {
+  return key.trim() === SUPER_ADMIN_KEY
+}
+
+export async function getFieldIdentity(assignmentId: string | null): Promise<FieldIdentity | undefined> {
+  if (assignmentId === null) return SUPER_ADMIN
   const a = await getAssignment(assignmentId)
   if (!a) return undefined
   return {
@@ -297,7 +325,7 @@ export async function findVolunteer(phone: string, name: string): Promise<Assign
 export interface SampleLogin {
   name: string
   phone: string
-  role: string
+  role: StaffRole
   shift: Shift
   zoneName: string
 }
@@ -325,13 +353,13 @@ export async function getDutyLog(id: string): Promise<DutyLogEntry[]> {
   for (const e of eventsOf(a.id)) {
     if (e.timeMin > now) continue
     if (e.kind === 'checkin')
-      entries.push({ time: fmtHM(e.timeMin), label: '출근 체크인', status: 'on', via: e.method, note: e.anomaly })
+      entries.push({ time: fmtHM(e.timeMin), label: '출근 체크인', status: 'on', note: e.anomaly })
     else if (e.kind === 'checkout')
-      entries.push({ time: fmtHM(e.timeMin), label: '퇴근', status: 'off', via: e.method })
+      entries.push({ time: fmtHM(e.timeMin), label: '퇴근', status: 'off' })
     else if (e.kind === 'audit')
       entries.push({ time: fmtHM(e.timeMin), label: e.anomaly ? '순회 감사 — 불일치' : '순회 감사 — 정위치 확인', status: 'on', note: e.anomaly })
     else
-      entries.push({ time: fmtHM(e.timeMin), label: `정시(1h) 체크 ${fmtHM(e.slot ?? e.timeMin)}`, status: 'on', via: e.method })
+      entries.push({ time: fmtHM(e.timeMin), label: `정시(1h) 체크 ${fmtHM(e.slot ?? e.timeMin)}`, status: 'on' })
   }
   for (const b of prof?.breaks ?? []) {
     if (b.startMin <= now) entries.push({ time: fmtHM(b.startMin), label: '휴게 시작', status: 'break', note: b.note })
@@ -353,7 +381,7 @@ export async function getAttendanceEvents(): Promise<AttendanceEvent[]> {
       const a = findAssignment(e.assignmentId)
       return {
         id: e.id, idempotencyKey: e.idempotencyKey, personName: a?.personName ?? '—',
-        zoneId: e.assignmentId && a?.zoneId ? a.zoneId : '', method: (e.method ?? 'scan') as CheckMethod,
+        zoneId: e.assignmentId && a?.zoneId ? a.zoneId : '',
         time: fmtHM(e.timeMin), gps: e.gps, anomaly: e.anomaly,
       }
     })
@@ -386,12 +414,15 @@ export async function getActiveShift(): Promise<Shift> {
 
 // ── 상황전파 수신자 판정(R5) ─────────────────────────────
 // 축이 비면 그 축은 안 거른다. 축 안은 OR, 축 사이는 AND. 전부 비면 전원.
+// role 이 null 인 사람이 있다 — 슈퍼어드민은 StaffRole 셋 중 어느 것도 아니다.
+// 역할을 지목한 공지는 역할이 없는 사람에게 가지 않는다(거점 지목 공지가 거점 없는 사람에게
+// 안 가는 것과 같은 규칙).
 export function matchesAudience(
-  person: { kind: StaffKind; role: StaffRole; zoneId: string | null },
+  person: { kind: StaffKind; role: StaffRole | null; zoneId: string | null },
   aud: Audience,
 ): boolean {
   if (aud.kinds?.length && !aud.kinds.includes(person.kind)) return false
-  if (aud.roles?.length && !aud.roles.includes(person.role)) return false
+  if (aud.roles?.length && (person.role === null || !aud.roles.includes(person.role))) return false
   // 거점을 지목한 공지는 거점 없는 인력(현장운영·예비)에게 가지 않는다.
   if (aud.zoneIds?.length && (person.zoneId === null || !aud.zoneIds.includes(person.zoneId))) return false
   return true
@@ -399,10 +430,14 @@ export function matchesAudience(
 
 // 특정 배치(=사람)가 받아야 할 공지 — 현장앱 수신함.
 // 주소(audience)로 한 번, 발령 시각으로 한 번 거른다.
-export async function getNoticesFor(assignmentId: string): Promise<Notice[]> {
-  const a = rawAssignments().find((x) => x.id === assignmentId)
-  if (!a) return []
-  return issuedNotices(getNowMin()).filter((n) => matchesAudience(a, n.audience))
+export async function getNoticesFor(assignmentId: string | null): Promise<Notice[]> {
+  // null = 슈퍼어드민. 배치가 없어도 '모양'은 있으므로 주소 판정이 된다 —
+  // matchesAudience 가 id 가 아니라 shape 을 받게 설계된 이유가 이것이다.
+  const person = assignmentId === null
+    ? { kind: SUPER_ADMIN.kind, role: null, zoneId: null }
+    : rawAssignments().find((x) => x.id === assignmentId)
+  if (!person) return []
+  return issuedNotices(getNowMin()).filter((n) => matchesAudience(person, n.audience))
 }
 
 // 수신자 주소를 사람이 읽는 한 줄로 — 콘솔 배지·현장앱 표기 공유.
@@ -729,16 +764,16 @@ export async function getKpi(): Promise<KpiSummary> {
 }
 
 // ── 쓰기(명령형, R3 + 멱등 R4) ──────────────────────────
-type CheckInMethod = 'QR' | 'GPS'
-const toCheckMethod = (m: CheckInMethod): CheckMethod => (m === 'QR' ? 'scan' : 'gps')
-
+// 체크인은 GPS 셀프 단일 경로다. method 인자가 없어진 이유가 그것이다 —
+// 이전엔 'QR'(관리자 스캔) | 'GPS' 둘이었는데, QR 출결을 폐기하면서 갈래가 하나만 남았다.
+// QR 은 이제 서명(recordScan)이고 출결과 아무 관계가 없다.
 export async function checkIn(
   assignmentId: string,
-  opts: { method: CheckInMethod; gps?: Coords; ts: number; idempotencyKey: string; anomaly?: string }
+  opts: { gps?: Coords; ts: number; idempotencyKey: string; anomaly?: string }
 ): Promise<boolean> {
   return addEvent({
     idempotencyKey: opts.idempotencyKey, assignmentId, date: getNowDate(), kind: 'checkin',
-    timeMin: opts.ts, method: toCheckMethod(opts.method), gps: opts.gps, anomaly: opts.anomaly,
+    timeMin: opts.ts, gps: opts.gps, anomaly: opts.anomaly,
   })
 }
 
@@ -767,10 +802,9 @@ export async function assignReserve(alertId: string, reserveAssignmentId: string
   const shift = activeShiftAt(now)
   const placed = placeReserve(reserveAssignmentId, zoneId, shift)
   if (!placed) return false
-  const method: CheckMethod = zoneOf(zoneId)?.checkMode === 'self_gps' ? 'gps' : 'scan'
   addEvent({
     idempotencyKey: `assign:${reserveAssignmentId}:${getNowDate()}:${zoneId}:${now}`,
-    assignmentId: reserveAssignmentId, date: getNowDate(), kind: 'checkin', timeMin: now, method,
+    assignmentId: reserveAssignmentId, date: getNowDate(), kind: 'checkin', timeMin: now,
   })
   return true
 }
@@ -920,42 +954,80 @@ export async function registerVendorDoc(vendorId: string, docId: string, done: b
   return setVendorDoc(vendorId, docId, done, opsDate())
 }
 
-// 순회 랜덤감사 — 무인(관광지) 거점 셀프체크 무결성의 3번째 층(핸드오프 §3).
-// 대상 후보 = 현재 근무 중인 무인 거점 인력.
-// 순회 감사 대상 = 셀프체크(GPS) 거점의 자원봉사자. 검증하려는 건 '셀프체크 무결성'이므로
-// 셀프체크를 하지 않는 운영인력은 대상이 아니다 — kind 를 안 가리면 관광 거점에 상주하는
-// 거점관리자가 자기들끼리 감사 대상으로 잡힌다(전 거점 관리자 배치 이후 발생).
-export async function getPatrolCandidates(): Promise<Assignment[]> {
-  const now = getNowMin()
-  return roster(now).filter(
-    (a) =>
-      !a.isReserve &&
-      a.kind === '자원봉사자' &&
-      isPresent(a.status) &&
-      zoneOf(a.zoneId)?.checkMode === 'self_gps'
-  )
+// ── 스캔(QR = 서명) ─────────────────────────────────────
+// ⚠️ 증거 전용 층이다. 아무것도 구동하지 않는다 — 출결도, 물품지급 현황도, 이슈도.
+// 스캔이 있는데 물품은 미지급으로 남아 있을 수 있고, 그건 모순이 아니라 설계다.
+// 물품지급 현황(GoodsIssue)은 콘솔에서 관리자가 관리하는 마스터로 그대로 둔다.
+//
+// 이게 옛 순회 랜덤감사(getPatrolCandidates/recordPatrolAudit)를 대체한다. 그건 시스템이
+// 대상을 뽑아주고 관리자는 [일치]/[불일치]를 클릭만 했다 — 자리에 앉아서도 통과하는
+// 가짜 대면이었다. 이제 그 사람 앞에 가서 찍어야 하고, 불일치는 '스캔 없음 = 기록 없음'
+// 으로 표현되며 실제 문제는 관리자가 이슈 보고로 올린다.
+//
+// 대가: 랜덤성을 잃었다. 관리자가 찍을 사람을 고른다 — 편한 사람만 찍을 여지가 있다.
+// 편중은 봉사자별 대면확인 횟수(getScanCounts)로 사후에 드러난다.
+//
+// 거점 기반이 아니다 — 어디서 찍든 된다. 지오펜스는 게이트가 아니라 기록이다:
+// 대상 봉사자의 거점 반경과 대조해 벗어나면 anomaly 를 남기되 스캔 자체는 통과시킨다.
+// 기준이 '찍는 사람의 거점'이 아니라 '대상 봉사자의 거점'이라 겸직·순회·슈퍼어드민이
+// 전부 특례 없이 처리된다. 대면이므로 찍는 사람의 위치 하나로 양쪽이 증명된다.
+export async function recordScan(input: {
+  subjectId: string
+  scannerId: string | null
+  kind: ScanKind
+  note?: string
+  gps?: Coords
+  ts: number
+  idempotencyKey: string
+}): Promise<boolean> {
+  const subject = findAssignment(input.subjectId)
+  if (!subject) return false
+  const zone = zoneOf(subject.zoneId)
+  let anomaly: string | undefined
+  if (input.gps && zone) {
+    const g = checkGeofence(input.gps, zone.coords, zone.geofenceRadius)
+    if (!g.within) anomaly = `${zone.name} 지오펜스(${zone.geofenceRadius}m) 밖 ${g.distance}m — 이상치 기록(차단 아님)`
+  }
+  return addScan({
+    idempotencyKey: input.idempotencyKey,
+    subjectId: input.subjectId,
+    scannerId: input.scannerId,
+    kind: input.kind,
+    note: input.note?.trim() || undefined,
+    date: getNowDate(),
+    timeMin: input.ts,
+    gps: input.gps,
+    anomaly,
+  })
 }
 
-// 감사 결과 기록. mismatch(불일치)면 audit 이벤트에 사유 + 운영본부 이슈 접수.
-export async function recordPatrolAudit(
-  assignmentId: string,
-  opts: { result: 'ok' | 'mismatch'; ts: number; idempotencyKey: string }
-): Promise<boolean> {
-  const anomaly = opts.result === 'mismatch' ? '순회감사 불일치 — 위치·본인 확인 필요' : undefined
-  const ok = addEvent({ idempotencyKey: opts.idempotencyKey, assignmentId, date: getNowDate(), kind: 'audit', timeMin: opts.ts, anomaly })
-  if (opts.result === 'mismatch') {
-    const a = findAssignment(assignmentId)
-    addIssue({
-      idempotencyKey: `${opts.idempotencyKey}:issue`, type: '안전사고',
-      zoneId: a?.zoneId ?? '', status: 'received', time: fmtHM(opts.ts),
-      message: `순회감사 불일치 — ${a?.personName ?? assignmentId} 위치·본인 확인 필요`,
-    })
-  }
-  return ok
+// 한 사람에게 남은 서명들(현재 날짜·시각까지). 최신순.
+export async function getScansFor(subjectId: string): Promise<ScanEvent[]> {
+  const now = getNowMin()
+  return rawScans()
+    .filter((s) => s.subjectId === subjectId && s.date === getNowDate() && s.timeMin <= now)
+    .sort((a, b) => b.timeMin - a.timeMin)
+}
+
+// 최근 스캔 피드(현재 날짜·시각까지). 콘솔 대조용.
+export async function getRecentScans(limit = 8): Promise<ScanEvent[]> {
+  const now = getNowMin()
+  return rawScans()
+    .filter((s) => s.date === getNowDate() && s.timeMin <= now)
+    .sort((a, b) => b.timeMin - a.timeMin)
+    .slice(0, limit)
+}
+
+// 봉사자별 대면확인 횟수 — 랜덤성 포기의 대가(관리자가 찍을 사람을 고른다)를 드러내는 자리.
+// 날짜를 안 가린다: 편중은 하루가 아니라 기간으로 봐야 보인다.
+export async function getFaceCheckCounts(): Promise<Record<string, number>> {
+  const out: Record<string, number> = {}
+  for (const s of rawScans()) if (s.kind === '대면확인') out[s.subjectId] = (out[s.subjectId] ?? 0) + 1
+  return out
 }
 
 export async function reportIssue(input: {
-  type: Issue['type']; zoneId: string; note: string; ts: number; idempotencyKey: string
+  type: Issue['type']; zoneId: string | null; note: string; ts: number; idempotencyKey: string
 }): Promise<Issue> {
   return addIssue({
     idempotencyKey: input.idempotencyKey, type: input.type, zoneId: input.zoneId,
@@ -971,13 +1043,6 @@ export async function getSafety(): Promise<SafetyState> {
 // 안전사고·SOS 이슈(현장앱 SOS·순회감사 불일치가 흘러듦).
 export async function getSafetyIssues(): Promise<Issue[]> {
   return rawIssues().filter((i) => i.type === '안전사고')
-}
-// 작업중지 발령/해제 — 중대재해 6-3 핵심.
-export async function declareWorkStop(reason: string): Promise<void> {
-  setWorkStop(true, reason, getNowHM())
-}
-export async function liftWorkStop(): Promise<void> {
-  setWorkStop(false, '', null)
 }
 // 운영중단 발령/해제 — 현장앱 전파 대상(R3).
 // zoneIds 를 비우거나 null 로 주면 전 거점(토털). 사유는 발주처 보고에 그대로 실린다.

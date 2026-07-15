@@ -1,12 +1,18 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { useState } from 'react'
+import { NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
 import { OPS_INFO } from '../../lib/services'
 import { useNowMin } from '../../lib/useLive'
 import { fmtHM } from '../../lib/clock'
 import { useCapture } from '../../lib/capture'
+import { loadConsoleSession, saveConsoleSession, clearConsoleSession } from '../../lib/consoleAuth'
+import type { ConsoleSession, ConsoleRole } from '../../lib/consoleAuth'
+import ConsoleLogin from './ConsoleLogin'
 import bgSidebar from '../../assets/bg-sidebar.jpg'
 import logoW from '../../assets/logo-its-w.png'
 
-type NavItem = { to: string; label: string; end?: boolean }
+// superAdminOnly 가 사이드바와 라우트 가드의 단일 출처다(R5).
+// 메뉴에서 숨기기만 하면 URL 을 직접 치면 들어가진다 — 아래 blocked 판정이 같은 배열을 본다.
+type NavItem = { to: string; label: string; end?: boolean; superAdminOnly?: true }
 const overview: NavItem = { to: '/', label: '통합 운영현황', end: true }
 const groups: { title: string; items: NavItem[] }[] = [
   {
@@ -26,7 +32,9 @@ const groups: { title: string; items: NavItem[] }[] = [
     items: [
       { to: '/personnel', label: '인력 현황' },
       { to: '/vendors', label: '업체 등록 현황' },
-      { to: '/settlement', label: '정산 산출내역' },
+      // 발주처(client)에겐 안 보인다. 정산은 우리 원가(일용 지급·원천징수)가 드러나는 화면이고
+      // 발주처 보고 대상은 자원봉사자 실비뿐이다 — 등급이 곧 보고 경계다.
+      { to: '/settlement', label: '정산 산출내역', superAdminOnly: true },
     ],
   },
 ]
@@ -42,9 +50,30 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
       : 'font-medium text-white/80 hover:bg-white/10 hover:text-white'
   }`
 
+const visibleTo = (role: ConsoleRole) => (n: NavItem) => !n.superAdminOnly || role === 'superAdmin'
+
 export default function ConsoleLayout() {
   const now = useNowMin()
   const capture = useCapture()
+  const { pathname } = useLocation()
+  const [session, setSession] = useState<ConsoleSession | null>(() => loadConsoleSession())
+
+  if (!session) {
+    return (
+      <div className="h-full">
+        <ConsoleLogin
+          onLogin={(s) => { saveConsoleSession(s); setSession(s) }}
+        />
+      </div>
+    )
+  }
+
+  // 메뉴에 없는 화면을 URL 로 직접 들어오면 되돌린다. 사이드바와 같은 배열을 본다.
+  const blocked = groups
+    .flatMap((g) => g.items)
+    .some((n) => n.superAdminOnly && n.to === pathname && session.role !== 'superAdmin')
+  if (blocked) return <Navigate to="/" replace />
+
   // 캡쳐 모드: h-full 대신 최소 900 + 본문 overflow-visible → 자연 높이로 펼쳐 2분할 컷.
   return (
     <div className={capture ? 'flex min-h-[900px]' : 'flex h-full'}>
@@ -69,13 +98,15 @@ export default function ConsoleLayout() {
           <NavLink to={overview.to} end={overview.end} className={navLinkClass}>
             {overview.label}
           </NavLink>
-          {groups.map((g) => (
+          {groups
+            .filter((g) => g.items.some(visibleTo(session.role)))
+            .map((g) => (
             <div key={g.title}>
               <div className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-white/80">
                 {g.title}
               </div>
               <div className="space-y-0.5">
-                {g.items.map((n) => (
+                {g.items.filter(visibleTo(session.role)).map((n) => (
                   <NavLink key={n.to} to={n.to} end={n.end} className={navLinkClass}>
                     {n.label}
                   </NavLink>
@@ -88,6 +119,15 @@ export default function ConsoleLayout() {
           <div className="flex items-center gap-2">
             <span className="h-2 w-2 animate-pulse rounded-full bg-ok ring-1 ring-white/50" />
             실시간 연결됨
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <span className="min-w-0 truncate text-white/80">{session.label}</span>
+            <button
+              onClick={() => { clearConsoleSession(); setSession(null) }}
+              className="shrink-0 rounded-md bg-white/10 px-2 py-0.5 font-semibold text-white/90 transition hover:bg-white/20"
+            >
+              로그아웃
+            </button>
           </div>
         </div>
       </aside>
@@ -106,8 +146,8 @@ export default function ConsoleLayout() {
               <div className="tnum text-section font-bold text-ink-strong">{fmtHM(now)}</div>
               <div className="text-caption text-ink-muted">현재 시각 · {now < 14 * 60 ? '오전조' : '오후조'}</div>
             </div>
-            <div className="grid h-9 w-9 place-items-center rounded-full bg-primary-50 text-body font-bold text-primary-600">
-              관제
+            <div className="grid h-9 place-items-center rounded-full bg-primary-50 px-3 text-label font-bold text-primary-600">
+              {session.role === 'superAdmin' ? '관리자' : '발주처'}
             </div>
           </div>
         </header>

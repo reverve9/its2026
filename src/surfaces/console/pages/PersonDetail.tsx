@@ -236,11 +236,6 @@ export default function PersonDetailModal({
                               <div className="flex items-baseline gap-2">
                                 <span className="tnum text-label font-bold text-ink-strong">{e.time}</span>
                                 <span className="text-label text-ink-base">{e.label}</span>
-                                {e.via && (
-                                  <span className={`rounded px-1.5 py-0.5 text-caption font-semibold ${e.via === 'gps' ? 'bg-info-soft text-info' : 'bg-primary-50 text-primary-700'}`}>
-                                    {e.via === 'gps' ? 'GPS' : '스캔'}
-                                  </span>
-                                )}
                               </div>
                               {e.note && <div className="mt-0.5 text-caption text-ink-muted">{e.note}</div>}
                             </div>
@@ -375,7 +370,7 @@ export default function PersonDetailModal({
                       <input
                         value={payout.bankName ?? ''}
                         onChange={(e) => setPayoutInfo(a.id, { bankName: e.target.value })}
-                        placeholder="예: 농협"
+                        placeholder="은행"
                         className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-label text-ink-strong outline-none transition placeholder:text-ink-faint focus:border-primary-400"
                       />
                     </label>

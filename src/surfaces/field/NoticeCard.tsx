@@ -8,7 +8,8 @@ import { useLive } from '../../lib/useLive'
 //
 // 받는 목록은 getNoticesFor 가 주소(구분×역할×거점)와 발령 시각으로 걸러준다.
 // 화면은 거르지 않는다(R1·R5) — 여기서 또 거르면 판정이 두 곳으로 갈린다.
-export function NoticeCard({ assignmentId }: { assignmentId: string }) {
+// assignmentId: null = 슈퍼어드민(배치 없음). getNoticesFor 가 모양으로 판정한다.
+export function NoticeCard({ assignmentId }: { assignmentId: string | null }) {
   const notices = useLive(() => getNoticesFor(assignmentId), [assignmentId]) ?? []
   const zones = useLive(getZones) ?? []
 

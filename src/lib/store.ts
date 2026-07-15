@@ -3,8 +3,8 @@
 // 나중에 Supabase 로 교체 시 이 파일이 DB 클라이언트로 바뀌고, services 시그니처는 불변.
 
 import type {
-  Coords, CheckMethod, EducationKind, EducationRecord, Employment, FoodVendor, GoodsIssue, Issue,
-  PayoutInfo, StaffKind, StaffRole, Zone,
+  Coords, EducationKind, EducationRecord, Employment, FoodVendor, GoodsIssue, Issue,
+  PayoutInfo, ScanEvent, StaffKind, StaffRole, Zone,
 } from '../types'
 import { emitChange, getNowDate } from './clock'
 import {
@@ -12,6 +12,7 @@ import {
   assignments as seedAssignments,
   events as seedEvents,
   dutyProfiles as seedDutyProfiles,
+  scans as seedScans,
   issues as seedIssues,
   notices as seedNotices,
   DEPLOYMENT_PLAN,
@@ -69,6 +70,11 @@ export interface StoredDutyProfile {
 // 먹거리 입점업체 등록 레코드 — 시간 비의존 마스터(파생 없음 → FoodVendor 와 동형).
 export type StoredVendor = FoodVendor
 
+// 스캔 이벤트(QR = 서명) — 원시 사실 그대로라 도메인 타입과 동형(FoodVendor 와 같은 취급).
+// 근태 이벤트(StoredEvent)와 나란히 있지만 다른 물건이다: 저건 '있었다'의 기록이고
+// 이건 '받았다·전달했다'의 서명이다. 출결 파생(status·checks)은 이걸 쳐다보지 않는다.
+export type StoredScan = ScanEvent
+
 export type EventKind = 'checkin' | 'checkout' | 'hourly' | 'audit'
 export interface StoredEvent {
   id: string
@@ -77,7 +83,6 @@ export interface StoredEvent {
   kind: EventKind
   date: string // 라이브 사실 — 이벤트만 날짜를 갖는다(현황은 5일 고정)
   timeMin: number
-  method?: CheckMethod
   slot?: number // hourly 슬롯(분)
   gps?: Coords
   anomaly?: string
@@ -88,6 +93,7 @@ const zones: Zone[] = seedZones.map((z) => ({ ...z }))
 const assignments: StoredAssignment[] = seedAssignments.map((a) => ({ ...a }))
 const events: StoredEvent[] = seedEvents.map((e) => ({ ...e }))
 const dutyProfiles: StoredDutyProfile[] = seedDutyProfiles.map((p) => ({ ...p }))
+const scans: StoredScan[] = seedScans.map((sc) => ({ ...sc }))
 const issues: Issue[] = seedIssues.map((i) => ({ ...i }))
 // 교육 이수 — personId 키(사람 단위). 배치가 아니라 사람에 귀속.
 const readiness: Record<string, EducationRecord[]> = Object.fromEntries(
@@ -97,9 +103,10 @@ const readiness: Record<string, EducationRecord[]> = Object.fromEntries(
 const vendors: StoredVendor[] = seedVendors.map((v) => ({ ...v, docs: v.docs.map((d) => ({ ...d })) }))
 
 let eventSeq = events.length
+let scanSeq = scans.length
 let issueSeq = issues.length
 
-// ── 안전 상태 — 작업중지 · 운영중단 · 위험요인 점검 ──────
+// ── 안전 상태 — 운영중단 · 위험요인 점검 ──────────────
 export interface HazardItem {
   id: string
   label: string
@@ -107,9 +114,13 @@ export interface HazardItem {
   checkedAt?: string
 }
 
-// 운영중단 — 과업지시서는 '작업중지'와 '운영중단'을 나란히 다른 조치로 쓴다.
-//   작업중지: 위험작업(고소·전기·중량물·구조물·야간) 중지. 대상 = 작업자·운영인력·하도급 종사자.
-//             설치·철거에 몰려 있어 이 플랫폼이 다루는 행사 5일 밖 → 콘솔에만 둔다.
+// 운영중단 — 과업지시서는 '작업중지'와 '운영중단'을 나란히 다른 조치로 쓴다. 이 플랫폼에는
+// 운영중단만 있다.
+//   작업중지: 위험작업(고소·전기·중량물·구조물·야간) 중지. 대상 = 작업자·하도급 종사자.
+//             설치·철거에 몰려 있어 이 플랫폼이 다루는 행사 5일(프로덕션) 밖이다.
+//             게다가 우리가 '발령'하는 것도 아니다 — 과업지시서는 발주기관·관계기관이 요구하면
+//             즉시 이행할 의무로 규정한다. 모델링 대상이 아니라 통째로 뺐다(콘솔 섹션·배너·
+//             setWorkStop 전부 삭제). 되살리지 말 것.
 //   운영중단: 거점 운영 중지. 대상 = 거기 서 있는 자원봉사자·거점관리자 → 현장앱에 전파해야 한다.
 //
 // 범위가 핵심이다. 이전 모델(weatherStop: boolean)은 전역이라 '강풍인데 실내 거점만 살린다'가
@@ -128,12 +139,10 @@ export interface Suspension {
 }
 
 export interface SafetyState {
-  workStop: { active: boolean; reason: string; at: string | null } // 작업중지 발령(콘솔 전용)
   suspension: Suspension // 운영중단 발령 — 현장앱 전파 대상
   hazards: HazardItem[] // 위험요인 점검표
 }
 const safety: SafetyState = {
-  workStop: { active: false, reason: '', at: null },
   suspension: { active: false, reason: '', at: null, zoneIds: null },
   hazards: [
     { id: 'hz-elec', label: '전기·발전기 배선 접지·절연 상태', checked: true, checkedAt: '09:30' },
@@ -146,10 +155,6 @@ const safety: SafetyState = {
 }
 export const rawSafety = (): SafetyState => safety
 
-export function setWorkStop(active: boolean, reason: string, at: string | null): void {
-  safety.workStop = { active, reason: active ? reason : '', at: active ? at : null }
-  emitChange()
-}
 // zoneIds: null = 전 거점. 해제하면 범위도 같이 지운다(잔상이 남으면 다음 발령이 오염된다).
 export function setSuspension(active: boolean, reason: string, at: string | null, zoneIds: string[] | null): void {
   safety.suspension = active
@@ -173,6 +178,9 @@ export const rawDutyProfiles = (): StoredDutyProfile[] => dutyProfiles
 // 그날의 근태 프로필. 없으면 undefined = 평범하게 나와서 평범하게 일한 날.
 export const dutyProfileOf = (assignmentId: string, date: string): StoredDutyProfile | undefined =>
   dutyProfiles.find((p) => p.assignmentId === assignmentId && p.date === date)
+export const rawScans = (): StoredScan[] => scans
+export const hasScanKey = (idempotencyKey: string): boolean =>
+  scans.some((s) => s.idempotencyKey === idempotencyKey)
 export const rawIssues = (): Issue[] => issues
 export const rawNotices = () => seedNotices
 export const deploymentPlan = () => DEPLOYMENT_PLAN
@@ -234,6 +242,15 @@ export function addEvent(ev: Omit<StoredEvent, 'id'>): boolean {
   if (hasEventKey(ev.idempotencyKey)) return false
   eventSeq++
   events.push({ ...ev, id: `ev-${eventSeq}` })
+  emitChange()
+  return true
+}
+
+// 스캔 기록(QR = 서명). 멱등키 중복이면 무시(R4) — 같은 코드를 두 번 찍어도 서명은 하나다.
+export function addScan(sc: Omit<StoredScan, 'id'>): boolean {
+  if (hasScanKey(sc.idempotencyKey)) return false
+  scanSeq++
+  scans.push({ ...sc, id: `sc-${scanSeq}` })
   emitChange()
   return true
 }

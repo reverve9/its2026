@@ -1,22 +1,24 @@
 import { useState } from 'react'
 import {
   getSafety, getSafetyIssues, getZones,
-  declareWorkStop, liftWorkStop, declareSuspension, liftSuspension,
+  declareSuspension, liftSuspension,
   toggleHazard, fileIncidentReport,
 } from '../../../lib/services'
 import { useLive } from '../../../lib/useLive'
 import { getNowMin } from '../../../lib/clock'
 import { PageHeader, Section, LivePill } from '../../../components/layout'
 
-// 운영중단 사유 프리셋 — 핵심은 문구가 아니라 '범위가 다르다'는 것이다.
-// 기상은 야외 거점만 닫고 실내(박물관)는 살린다. 비상사태·애도는 전 거점(zoneIds: null).
-// 국가 애도로 전국 행사가 일괄 취소된 선례가 있고, 그것도 전날 예고가 아니라 행사 당일
-// 오후에 — 이미 인력이 거점에 배치된 상태에서 — 전파됐다.
+// 운영중단 사유 프리셋 — 실무에서 실제로 반복되는 것만 둔다. 둘 다 기상이고 둘 다 야외 한정:
+// 해변·포토존은 닫고 실내(박물관)는 살린다. 프리셋의 값은 문구가 아니라 '범위'다.
+//
+// ⚠️ '국가 비상사태·애도'를 프리셋에서 뺐다. 전 거점(zoneIds: null) 중단이 필요하다는 걸
+// 알려준 사례이긴 하지만 발생 확률이 극히 낮다 — 프리셋 칩으로 강풍·폭우 옆에 나란히 두면
+// 상시 대비하는 흔한 조치처럼 읽힌다. 모델(zoneIds: null)은 그대로 있고, 그 경로는 아래
+// '전 거점으로 중단' 토글로 사유를 직접 적어 발령한다.
 const OUTDOOR_ZONES = ['z-gyeongpo', 'z-anmok', 'z-gangmun', 'z-photo', 'z-stage']
 const SUSPEND_PRESETS: { label: string; reason: string; zoneIds: string[] | null }[] = [
   { label: '강풍특보', reason: '강풍특보 — 야외 구조물·천막 전도 위험', zoneIds: OUTDOOR_ZONES },
-  { label: '폭우', reason: '호우특보 — 야외 활동 위험, 실내 거점은 정상 운영', zoneIds: OUTDOOR_ZONES },
-  { label: '국가 비상사태·애도', reason: '국가 애도기간 — 행사 전면 중단', zoneIds: null },
+  { label: '호우특보', reason: '호우특보 — 야외 활동 위험, 실내 거점은 정상 운영', zoneIds: OUTDOOR_ZONES },
 ]
 
 export default function Safety() {
@@ -26,12 +28,10 @@ export default function Safety() {
 
   const [susReason, setSusReason] = useState('')
   const [susZones, setSusZones] = useState<string[] | null>(null) // null = 전 거점
-  const [stopReason, setStopReason] = useState('')
   const [inc, setInc] = useState({ zoneId: '', summary: '', firstAction: '' })
   const [incSent, setIncSent] = useState(false)
 
   if (!safety) return null
-  const ws = safety.workStop
   const sus = safety.suspension
   const checkedCount = safety.hazards.filter((h) => h.checked).length
 
@@ -49,49 +49,13 @@ export default function Safety() {
     <div>
       <PageHeader
         title="안전·비상 관제"
-        summary="중대재해처벌법 대응 — 작업중지·사고 초동보고·위험요인 점검. SOS·기상특보 전파"
+        summary="중대재해처벌법 대응 — 사고 초동보고·위험요인 점검. 운영중단·SOS 전파"
         right={<LivePill label="안전상황실 연결" />}
       />
-
-      {/* 작업중지 발령 배너 */}
-      {ws.active && (
-        <div className="mb-5 flex items-center gap-4 rounded-xl border-2 border-critical bg-critical-soft px-5 py-4">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-critical text-2xl text-white">✋</span>
-          <div className="min-w-0 flex-1">
-            <div className="text-body font-bold text-critical">작업중지 발령 중 · {ws.at}</div>
-            <div className="text-label text-ink-base">사유: {ws.reason} — 전 거점 위험작업 중지, 안전 확인 후 재개</div>
-          </div>
-          <button onClick={() => liftWorkStop()} className="shrink-0 rounded-lg border border-critical bg-surface px-3 py-2 text-label font-semibold text-critical transition hover:bg-critical-soft">
-            작업 재개(해제)
-          </button>
-        </div>
-      )}
 
       <div className="grid grid-cols-3 gap-5">
         {/* 좌 2/3 — 중대재해 대응 */}
         <div className="col-span-2 flex flex-col gap-5">
-          {/* 작업중지 발령 */}
-          {!ws.active && (
-            <Section title="작업중지 발령">
-              <p className="text-label text-ink-muted">급박한 위험 시 즉시 작업중지. 발령 사유가 기록되고 전 거점에 전파됩니다.</p>
-              <div className="mt-3 flex gap-2">
-                <input
-                  value={stopReason}
-                  onChange={(e) => setStopReason(e.target.value)}
-                  placeholder="발령 사유 (예: 강풍 특보 — 무대 구조물 위험)"
-                  className="flex-1 rounded-lg border border-line bg-page px-3 py-2 text-label text-ink-strong outline-none focus:border-critical"
-                />
-                <button
-                  onClick={() => { if (stopReason.trim()) { declareWorkStop(stopReason.trim()); setStopReason('') } }}
-                  disabled={!stopReason.trim()}
-                  className="shrink-0 rounded-lg bg-critical px-4 py-2 text-label font-bold text-white transition hover:bg-critical/90 disabled:opacity-40"
-                >
-                  작업중지 발령
-                </button>
-              </div>
-            </Section>
-          )}
-
           {/* 사고 초동보고 */}
           <Section title="사고 초동보고">
             <div className="grid grid-cols-2 gap-3">
@@ -113,7 +77,7 @@ export default function Safety() {
             <input
               value={inc.firstAction}
               onChange={(e) => { setInc({ ...inc, firstAction: e.target.value }); setIncSent(false) }}
-              placeholder="초동조치 (예: 부상자 안전지대 이동·119 신고·의료지원반 연계)"
+              placeholder="초동조치"
               className="mt-3 w-full rounded-lg border border-line bg-page px-3 py-2 text-label text-ink-strong outline-none focus:border-primary-400"
             />
             <div className="mt-3 flex items-center gap-3">
@@ -173,7 +137,7 @@ export default function Safety() {
                 <p className="text-label text-ink-muted">
                   거점 운영을 중단하고 현장앱에 즉시 전파합니다. 대상 거점의 근무공백 경보는 중단 중 멈춥니다.
                 </p>
-                {/* 사유 프리셋 — 범위가 다르다. 기상은 야외 일부, 비상사태는 전 거점. */}
+                {/* 사유 프리셋 — 값은 문구가 아니라 범위다(야외 5개 거점). */}
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {SUSPEND_PRESETS.map((p) => (
                     <button
@@ -188,7 +152,7 @@ export default function Safety() {
                 <input
                   value={susReason}
                   onChange={(e) => setSusReason(e.target.value)}
-                  placeholder="중단 사유 (예: 강풍특보 — 야외 구조물 위험)"
+                  placeholder="중단 사유"
                   className="mt-2 w-full rounded-lg border border-line bg-surface px-3 py-2 text-label outline-none focus:border-primary-600"
                 />
                 <div className="mt-2 flex items-center justify-between">
@@ -238,7 +202,7 @@ export default function Safety() {
             <div className="divide-y divide-line-soft">
               {issues.length === 0 && <div className="py-6 text-center text-label text-ink-faint">접수된 안전사고 없음</div>}
               {issues.map((i) => {
-                const zn = zones.find((z) => z.id === i.zoneId)?.name ?? i.zoneId
+                const zn = i.zoneId ? zones.find((z) => z.id === i.zoneId)?.name ?? i.zoneId : '운영본부'
                 return (
                   <div key={i.id} className="py-2.5">
                     <div className="flex items-baseline justify-between gap-2">

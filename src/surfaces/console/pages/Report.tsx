@@ -115,7 +115,6 @@ export default function Report() {
           {/* 3. 안전관리 */}
           <Block n={3} title="안전관리">
             <div className="space-y-1.5 text-label text-ink-base">
-              <div>· 작업중지: {safety.workStop.active ? <b className="text-critical">발령 중 ({safety.workStop.at}) — {safety.workStop.reason}</b> : <span className="text-ok">발령 없음(정상 운영)</span>}</div>
               <div>· 운영중단: {safety.suspension.active ? <b className="text-warn">{safety.suspension.zoneIds === null ? '전 거점' : `${safety.suspension.zoneIds.length}개 거점`} 전파 중 ({safety.suspension.at}) — {safety.suspension.reason}</b> : <span className="text-ok">발령 없음(정상 운영)</span>}</div>
               <div>· 위험요인 점검: <b className={hazardChecked === safety.hazards.length ? 'text-ok' : 'text-warn'}>{hazardChecked}/{safety.hazards.length}</b> 완료{hazardChecked < safety.hazards.length ? ` (미점검: ${safety.hazards.filter((h) => !h.checked).map((h) => h.label).join(', ')})` : ''}</div>
               <div>· 안전사고 접수: <b>{issues.filter((i) => i.type === '안전사고').length}건</b></div>
@@ -137,8 +136,8 @@ export default function Report() {
             <ul className="space-y-1 text-label text-ink-base">
               {gaps.map((g) => <li key={g.zoneId}>· {g.zoneName} 근무공백 {g.shortfall}명 — 예비인력 투입 조치.</li>)}
               {compliance.map((c) => <li key={c.assignmentId}>· {c.zoneName} {c.personName} 정시체크 미이행({c.missedSlots.join('·')}) — 연락 확인.</li>)}
-              {safety.workStop.active && <li>· 작업중지 발령 중 — 안전 확인 후 재개 예정.</li>}
-              {gaps.length === 0 && compliance.length === 0 && !safety.workStop.active && <li className="text-ink-muted">· 특이사항 없음 — 전 거점 정상 운영.</li>}
+              {safety.suspension.active && <li>· {safety.suspension.zoneIds === null ? '전 거점' : `${safety.suspension.zoneIds.length}개 거점`} 운영중단 전파 중 — {safety.suspension.reason}.</li>}
+              {gaps.length === 0 && compliance.length === 0 && !safety.suspension.active && <li className="text-ink-muted">· 특이사항 없음 — 전 거점 정상 운영.</li>}
             </ul>
           </Block>
         </div>

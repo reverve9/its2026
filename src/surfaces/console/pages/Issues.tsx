@@ -25,7 +25,8 @@ export default function Issues() {
   const [status, setStatus] = useState<IssueStatus | 'all'>('all')
 
   const pg = usePageState(`${type}|${status}`) // 필터가 바뀌면 1페이지로
-  const zoneName = (id: string) => zones.find((z) => z.id === id)?.name ?? id
+  // null = 운영본부. 이슈는 거점 사실이 아니라 거점 없는 운영인력도 올린다.
+  const zoneName = (id: string | null) => (id ? zones.find((z) => z.id === id)?.name ?? id : '운영본부')
   const rows = issues.filter((i) => (type === 'all' || i.type === type) && (status === 'all' || i.status === status))
   const page = paginate(rows, pg.page)
   const count = (s: IssueStatus) => issues.filter((i) => i.status === s).length

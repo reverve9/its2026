@@ -1,17 +1,10 @@
 import type { AttendanceEvent } from '../types'
 
-const methodMeta: Record<AttendanceEvent['method'], { label: string; cls: string }> = {
-  scan: { label: '스캔', cls: 'bg-primary-50 text-primary-700' },
-  gps: { label: 'GPS', cls: 'bg-info-soft text-info' },
-}
-
+// 출결 피드 한 줄. 방식(스캔/GPS) 배지가 있었는데 없앴다 — 출결이 전 거점 GPS 셀프
+// 단일이 되면서 값이 하나뿐인 배지가 됐고, 그건 정보가 아니라 장식이다.
 export function EventRow({ event, zoneName }: { event: AttendanceEvent; zoneName: string }) {
-  const m = methodMeta[event.method]
   return (
     <div className="flex items-center gap-3 py-2">
-      <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-caption font-semibold ${m.cls}`}>
-        {m.label}
-      </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-1.5">
           <span className="text-label font-semibold text-ink-strong">{event.personName}</span>

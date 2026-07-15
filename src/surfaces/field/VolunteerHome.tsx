@@ -19,7 +19,11 @@ type GpsState = { status: 'idle' | 'locating' | 'done' | 'error'; msg?: string }
 
 export default function VolunteerHome({ session, onLogout }: { session: FieldSession; onLogout: () => void }) {
   const now = useNowMin()
-  const a = useLive(() => getAssignment(session.assignmentId), [session.assignmentId])
+  // 봉사자는 반드시 배치가 있다(배치 없는 사람 = 슈퍼어드민 → kind 가 운영인력이라 OpsHome 으로 간다).
+  const a = useLive(
+    () => (session.assignmentId ? getAssignment(session.assignmentId) : Promise.resolve(undefined)),
+    [session.assignmentId]
+  )
   // 교육 이수 — 읽기 전용. 이수 처리는 운영본부의 일괄 인증뿐이라 여기엔 버튼이 없다.
   const education = useLive(
     () => (a ? getEducation(a.personId) : Promise.resolve([])),
@@ -32,7 +36,6 @@ export default function VolunteerHome({ session, onLogout }: { session: FieldSes
   if (!a) return <div className="grid h-full place-items-center text-label text-ink-muted">불러오는 중…</div>
 
   const checkedIn = !!a.checkedInAt
-  const isGpsZone = zone?.checkMode === 'self_gps'
   const workedMin = a.checkedInAt ? (a.checkedOutAt ? toMin(a.checkedOutAt) : now) - toMin(a.checkedInAt) : 0
 
   // 현재 정시(1h) 슬롯 — 조 슬롯 중 지난 마지막.
@@ -52,7 +55,7 @@ export default function VolunteerHome({ session, onLogout }: { session: FieldSes
         const here = { lat: pos.coords.latitude, lng: pos.coords.longitude }
         const g = zone ? checkGeofence(here, zone.coords, zone.geofenceRadius) : { within: true, distance: 0, anomaly: undefined }
         await checkIn(a.id, {
-          method: 'GPS', gps: here, ts: getNowMin(),
+          gps: here, ts: getNowMin(),
           idempotencyKey: `field:${a.id}:checkin:${a.date}:${a.shift}`, anomaly: g.anomaly,
         })
         setGps({ status: 'done', msg: g.within ? `거점 반경 내 확인 (${g.distance}m)` : g.anomaly })
@@ -142,33 +145,23 @@ export default function VolunteerHome({ session, onLogout }: { session: FieldSes
           </div>
         </div>
 
-        {/* 체크인 */}
+        {/* 체크인 — 전 거점 GPS 셀프 단일. 이전엔 거점의 checkMode 로 GPS/QR 이 갈렸는데,
+            QR 출결을 폐기하면서 갈래가 사라졌다. QR 은 이제 아래 신분증 카드다. */}
         {!checkedIn ? (
-          isGpsZone ? (
-            <div className="card p-4">
-              <div className="text-label font-semibold text-ink-strong">GPS 원버튼 체크인</div>
-              <p className="mt-1 text-caption text-ink-muted">무인 거점 — 거점 반경 안에서 버튼을 누르면 위치로 출근 확인됩니다.</p>
-              <button
-                onClick={doGpsCheckIn}
-                disabled={gps.status === 'locating'}
-                className="mt-3 w-full rounded-xl bg-primary-600 py-4 text-body font-bold text-white transition hover:bg-primary-700 disabled:opacity-50"
-              >
-                {gps.status === 'locating' ? '위치 확인 중…' : '📍 GPS 체크인'}
-              </button>
-              {gps.msg && (
-                <p className={`mt-2 text-caption ${gps.status === 'error' ? 'text-critical' : 'text-ok'}`}>{gps.msg}</p>
-              )}
-            </div>
-          ) : (
-            <div className="card p-4">
-              <div className="text-label font-semibold text-ink-strong">QR 체크인 (유인 거점)</div>
-              <p className="mt-1 text-caption text-ink-muted">행사장 거점 — 거점관리자에게 아래 코드를 제시하면 스캔으로 출근 확인됩니다.</p>
-              <div className="mt-3 grid place-items-center rounded-xl border border-line bg-white py-6">
-                <QrCode value={a.id} size={176} />
-                <div className="tnum mt-2 text-caption text-ink-muted">{a.id}</div>
-              </div>
-            </div>
-          )
+          <div className="card p-4">
+            <div className="text-label font-semibold text-ink-strong">GPS 원버튼 체크인</div>
+            <p className="mt-1 text-caption text-ink-muted">거점 반경 안에서 버튼을 누르면 위치로 출근 확인됩니다.</p>
+            <button
+              onClick={doGpsCheckIn}
+              disabled={gps.status === 'locating'}
+              className="mt-3 w-full rounded-xl bg-primary-600 py-4 text-body font-bold text-white transition hover:bg-primary-700 disabled:opacity-50"
+            >
+              {gps.status === 'locating' ? '위치 확인 중…' : '📍 GPS 체크인'}
+            </button>
+            {gps.msg && (
+              <p className={`mt-2 text-caption ${gps.status === 'error' ? 'text-critical' : 'text-ok'}`}>{gps.msg}</p>
+            )}
+          </div>
         ) : (
           <div className="card p-4">
             <div className="flex items-center justify-between">
@@ -200,6 +193,21 @@ export default function VolunteerHome({ session, onLogout }: { session: FieldSes
             </button>
           </div>
         )}
+
+        {/* 내 QR(신분증) — 상시. 체크인 여부·거점·조와 무관하게 항상 유효하다.
+            이 카드는 출결과 아무 관계가 없다: 물품을 받거나 대면 지시를 받을 때
+            운영인력에게 제시해 '내가 받았다'는 서명을 남기는 용도다.
+            이전엔 유인 거점에서만 뜨는 체크인 수단이었다(QR 출결 폐기로 성격이 바뀌었다). */}
+        <div className="card p-4">
+          <div className="text-label font-semibold text-ink-strong">내 QR (신분증)</div>
+          <p className="mt-1 text-caption text-ink-muted">
+            물품 수령·지시 확인 시 운영인력에게 제시하세요. 출근 체크와는 무관합니다.
+          </p>
+          <div className="mt-3 grid place-items-center rounded-xl border border-line bg-white py-6">
+            <QrCode value={a.id} size={176} />
+            <div className="tnum mt-2 text-caption text-ink-muted">{a.personName} · {a.id}</div>
+          </div>
+        </div>
 
         {/* 본부 공지 — 체크인 액션 아래, 참고정보 위. 지시는 안내보다 먼저 읽어야 한다. */}
         <NoticeCard assignmentId={a.id} />
