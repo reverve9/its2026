@@ -101,8 +101,10 @@ export default function Personnel() {
   const goodsDone = (p: PersonnelRecord) => (p.goods.jacket ? 1 : 0) + (p.goods.bag ? 1 : 0)
   // 외국어 우선배치는 자원봉사자(관광지 거점) 얘기 — 운영인력을 섞으면 모수가 오염된다.
   const langCount = people.filter((p) => p.kind === '자원봉사자' && p.lang.length > 0).length
-  // 교육 이수율 — 배치 인력 기준(예비 제외). 대시보드 KPI와 같은 모수.
-  const eduBase = people.filter((p) => !p.isReserve)
+  // 교육 이수율 — 자원봉사자 배치 인력 기준(예비 제외). 대시보드 KPI(getEducationSummary)와 같은 모수.
+  // kind 를 안 가르면 모수가 132(운영인력 22 포함)가 되어 같은 숫자가 여기선 77%, 대시보드에선 92%로
+  // 갈린다. 사전 통합교육은 자원봉사자 항목이라 운영인력에겐 이수 이력 자체가 없다.
+  const eduBase = people.filter((p) => p.kind === '자원봉사자' && !p.isReserve)
   const eduDone = eduBase.filter((p) => hasEducation(p.education, '사전 통합교육')).length
   const eduPending = eduBase.length - eduDone
   const eduRate = eduBase.length ? Math.round((eduDone / eduBase.length) * 100) : 0
@@ -112,13 +114,18 @@ export default function Personnel() {
     !qq || [p.personName, zoneName(p), p.phone, p.role, ...p.lang].some((v) => v.toLowerCase().includes(qq))
   const inZone = (p: PersonnelRecord) =>
     zoneFilter === 'all' || (zoneFilter === 'reserve' ? p.isReserve : p.zoneId === zoneFilter)
+  // 교대·교육·정산서류는 전부 자원봉사자 축이다 — 운영인력은 전일 상주라 shift 가 스키마
+  // 채움값('AM')이고, 교육·실비 대상이 아니라 education·payout 자체가 비어 있다.
+  // kind 게이트가 없으면 필터가 조용히 거짓말한다: '오후조' → 운영인력 0명(전원 AM),
+  // '교육 미이수만' → 운영인력 22명 전원, '정산 서류 미비만' → 운영인력 22명 전원.
+  const isVol = (p: PersonnelRecord) => p.kind === '자원봉사자'
   const filtered = people.filter(
     (p) =>
       (kind === 'all' || p.kind === kind) &&
-      (shift === 'all' || p.shift === shift) &&
+      (shift === 'all' || (isVol(p) && p.shift === shift)) &&
       inZone(p) &&
-      (!payoutPendingOnly || !payoutReady(p.payout)) &&
-      (!eduPendingOnly || !hasEducation(p.education, '사전 통합교육')) &&
+      (!payoutPendingOnly || (isVol(p) && !payoutReady(p.payout))) &&
+      (!eduPendingOnly || (isVol(p) && !hasEducation(p.education, '사전 통합교육'))) &&
       matchQ(p)
   )
   const rows =
@@ -226,7 +233,7 @@ export default function Personnel() {
         <SummaryTile
           label="사전 통합교육 이수"
           value={`${eduRate}%`}
-          sub={eduPending ? `미이수 ${eduPending}명` : '전원 이수 완료'}
+          sub={eduPending ? `미이수 ${eduPending} / ${eduBase.length}` : `전원 이수 완료 (${eduBase.length})`}
           tone={eduPending ? 'warn' : 'ok'}
         />
         <SummaryTile label="외국어 가능" value={`${langCount}명`} sub="영어 · 중국어 · 일본어 · 러시아어" />
@@ -262,7 +269,11 @@ export default function Personnel() {
           {kindFilters.map((f) => (
             <button
               key={f.key}
-              onClick={() => setKind(f.key)}
+              onClick={() => {
+                setKind(f.key)
+                // 자원봉사자 전용 필터가 켜진 채로 숨으면 보이지 않는 손이 목록을 거른다.
+                if (f.key === '운영인력') { setShift('all'); setEduPendingOnly(false); setPayoutPendingOnly(false) }
+              }}
               className={`rounded-full px-3.5 py-1 text-label font-semibold transition ${
                 kind === f.key ? 'bg-primary-600 text-white' : 'text-ink-muted hover:text-ink-strong'
               }`}
@@ -271,36 +282,46 @@ export default function Personnel() {
             </button>
           ))}
         </div>
-        <span className="mx-0.5 h-4 w-px bg-line" />
-        <div className="flex gap-1 rounded-full bg-neutral-100 p-0.5">
-          {shiftFilters.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setShift(f.key)}
-              className={`rounded-full px-3 py-1 text-label font-semibold transition ${
-                shift === f.key ? 'bg-primary-600 text-white' : 'text-ink-muted hover:text-ink-strong'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-        <button
-          onClick={() => setEduPendingOnly(!eduPendingOnly)}
-          className={`ml-auto rounded-full px-3 py-1.5 text-label font-semibold transition ${
-            eduPendingOnly ? 'bg-primary-600 text-white' : 'bg-surface text-ink-muted shadow-sm hover:text-ink-strong'
-          }`}
-        >
-          교육 미이수만
-        </button>
-        <button
-          onClick={() => setPayoutPendingOnly((v) => !v)}
-          className={`rounded-full px-3 py-1.5 text-label font-semibold transition ${
-            payoutPendingOnly ? 'bg-primary-600 text-white' : 'bg-surface text-ink-muted shadow-sm hover:text-ink-strong'
-          }`}
-        >
-          정산 서류 미비만
-        </button>
+
+        {/* 아래는 전부 자원봉사자 축 — 운영인력만 볼 땐 걷는다.
+            운영인력에게 교대는 없고(전일 상주) 교육·실비는 대상이 아니라, 남겨두면
+            '오후조 0명' 같은 답이 나온다. 조작할 수 없는 축을 보여주는 게 아니라 없애는 게 맞다. */}
+        {kind !== '운영인력' && (
+          <>
+            <span className="mx-0.5 h-4 w-px bg-line" />
+            <div className="flex gap-1 rounded-full bg-neutral-100 p-0.5">
+              {shiftFilters.map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => setShift(f.key)}
+                  className={`rounded-full px-3 py-1 text-label font-semibold transition ${
+                    shift === f.key ? 'bg-primary-600 text-white' : 'text-ink-muted hover:text-ink-strong'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                onClick={() => setEduPendingOnly(!eduPendingOnly)}
+                className={`rounded-full px-3 py-1.5 text-label font-semibold transition ${
+                  eduPendingOnly ? 'bg-primary-600 text-white' : 'bg-surface text-ink-muted shadow-sm hover:text-ink-strong'
+                }`}
+              >
+                교육 미이수만
+              </button>
+              <button
+                onClick={() => setPayoutPendingOnly((v) => !v)}
+                className={`rounded-full px-3 py-1.5 text-label font-semibold transition ${
+                  payoutPendingOnly ? 'bg-primary-600 text-white' : 'bg-surface text-ink-muted shadow-sm hover:text-ink-strong'
+                }`}
+              >
+                정산 서류 미비만
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* 일괄 인증 액션바 — 선택이 있을 때만 뜬다. 오프라인 통합교육 참석자 일괄 처리. */}
