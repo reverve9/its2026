@@ -7,8 +7,10 @@ import { toMin, fmtDur } from '../../lib/time'
 import { StatusBadge } from '../../components/ui'
 import { QrCode } from '../../components/QrCode'
 import { EMERGENCY_CONTACTS, SHUTTLE_INFO } from '../../lib/info'
+import { getEducation, educationRecord } from '../../lib/services'
 import type { FieldSession } from '../../lib/session'
 import logoW from '../../assets/logo-its-w.png'
+import bgHeader from '../../assets/bg-field-header.jpg'
 
 const telHref = (p: string) => `tel:${p.replace(/-/g, '')}`
 
@@ -17,6 +19,11 @@ type GpsState = { status: 'idle' | 'locating' | 'done' | 'error'; msg?: string }
 export default function VolunteerHome({ session, onLogout }: { session: FieldSession; onLogout: () => void }) {
   const now = useNowMin()
   const a = useLive(() => getAssignment(session.assignmentId), [session.assignmentId])
+  // 교육 이수 — 읽기 전용. 이수 처리는 운영본부의 일괄 인증뿐이라 여기엔 버튼이 없다.
+  const education = useLive(
+    () => (a ? getEducation(a.personId) : Promise.resolve([])),
+    [a?.personId]
+  )
   const zone = useLive(() => (a?.zoneId ? getZone(a.zoneId) : Promise.resolve(undefined)), [a?.zoneId])
   const [gps, setGps] = useState<GpsState>({ status: 'idle' })
   const [sosSent, setSosSent] = useState(false)
@@ -74,10 +81,15 @@ export default function VolunteerHome({ session, onLogout }: { session: FieldSes
     setSosSent(true)
   }
 
+  const eduRec = educationRecord(education ?? [], '사전 통합교육')
+
   return (
     <div className="flex h-full flex-col">
       {/* 헤더 — 로고 브랜드바 */}
-      <header className="flex items-center justify-between bg-primary-700 px-5 pb-4 pt-8">
+      <header
+        className="flex items-center justify-between bg-primary-900 bg-cover bg-center px-5 pb-4 pt-6"
+        style={{ backgroundImage: `url(${bgHeader})` }}
+      >
         <img src={logoW} alt="강릉 ITS 세계총회 2026" className="h-14 w-auto" />
         <button onClick={onLogout} className="rounded-lg bg-white/10 px-2.5 py-1 text-caption font-semibold text-white/90 transition hover:bg-white/20">
           로그아웃
@@ -88,7 +100,14 @@ export default function VolunteerHome({ session, onLogout }: { session: FieldSes
         {/* 사용자 헤딩 */}
         <div>
           <div className="font-title text-title font-semibold leading-tight text-ink-strong">{a.personName}</div>
-          <div className="mt-0.5 text-label text-ink-muted">{shiftLabel(a.shift)} · {zone?.name ?? '—'}</div>
+          <div className="mt-0.5 flex items-center gap-2">
+            <span className="text-label text-ink-muted">{shiftLabel(a.shift)} · {zone?.name ?? '—'}</span>
+            {eduRec ? (
+              <span className="rounded-md bg-ok-soft px-1.5 py-0.5 text-caption font-semibold text-ok">교육 이수</span>
+            ) : (
+              <span className="rounded-md bg-warn-soft px-1.5 py-0.5 text-caption font-semibold text-warn">교육 미이수</span>
+            )}
+          </div>
         </div>
         {/* 근무 카드 */}
         <div className="card p-4">
@@ -109,6 +128,16 @@ export default function VolunteerHome({ session, onLogout }: { session: FieldSes
               <div className="text-caption text-ink-faint">현재</div>
               <div className="tnum mt-0.5 text-body font-bold text-ink-strong">{fmtHM(now)}</div>
             </div>
+          </div>
+
+          {/* 교육 이수 — 읽기 전용(버튼 없음). 이수 처리는 운영본부 일괄 인증뿐. */}
+          <div className="mt-3 flex items-center justify-between border-t border-line-soft pt-3">
+            <span className="text-label text-ink-muted">사전 통합교육</span>
+            {eduRec ? (
+              <span className="text-label font-semibold text-ok">이수 완료 · {eduRec.certifiedAt.slice(5, 10).replace('-', '월 ')}일</span>
+            ) : (
+              <span className="text-label font-semibold text-warn">미이수 — 운영본부 문의</span>
+            )}
           </div>
         </div>
 

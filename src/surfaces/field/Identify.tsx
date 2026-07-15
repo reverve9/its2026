@@ -3,6 +3,7 @@ import { findVolunteer, getSampleLogins } from '../../lib/services'
 import { useLive } from '../../lib/useLive'
 import type { FieldSession } from '../../lib/session'
 import logoW from '../../assets/logo-its-w.png'
+import bgHeader from '../../assets/bg-field-header.jpg'
 
 // 신원확인 — 전화번호 + 성명 조회. 백엔드 인증 아님(강릉시·자원봉사센터 명단 조회).
 // dev quick-pick 로 실제 눌러보기 가능.
@@ -29,7 +30,10 @@ export default function Identify({ onLogin }: { onLogin: (s: FieldSession) => vo
   return (
     <div className="flex h-full flex-col">
       {/* 헤더 */}
-      <header className="flex items-center bg-primary-700 px-6 pb-4 pt-8">
+      <header
+        className="flex items-center bg-primary-900 bg-cover bg-center px-5 pb-4 pt-6"
+        style={{ backgroundImage: `url(${bgHeader})` }}
+      >
         <img src={logoW} alt="강릉 ITS 세계총회 2026" className="h-14 w-auto" />
       </header>
 
@@ -66,7 +70,7 @@ export default function Identify({ onLogin }: { onLogin: (s: FieldSession) => vo
         </button>
 
         <p className="mt-4 text-caption leading-relaxed text-ink-faint">
-          개인정보 최소수집(성명·연락처) · 위치정보는 근무 무결성 확인 목적에만 사용 · 행사 후 즉시 파기(Ⅳ-8).
+          개인정보 최소수집(성명·연락처) · 위치정보는 근무 확인 목적에만 사용 · 행사 후 즉시 파기
         </p>
 
         {/* dev quick-pick */}

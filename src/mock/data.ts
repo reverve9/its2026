@@ -7,8 +7,8 @@
 // services 가 '현재 시각'을 기준으로 이 사실들에서 상태·checks 를 파생한다.
 // 기준 시각 = 2026-10-21(수) 14:20 → 오전조 퇴근완료, 오후조 출근 중(미출근 3명 = B플로우 트리거).
 
-import type { Zone, Issue, Notice, Coords } from '../types'
-import type { StoredAssignment, StoredEvent } from '../lib/store'
+import type { Zone, Issue, Notice, Coords, VendorDoc, PayoutInfo, EducationRecord } from '../types'
+import type { StoredAssignment, StoredEvent, StoredVendor } from '../lib/store'
 
 export const SEED_DATE = '2026-10-21'
 
@@ -44,6 +44,47 @@ const phoneOf = (i: number) =>
 const langOf = (i: number): string[] | undefined => (i % 3 === 0 ? [LANGS[(i * 5) % LANGS.length]] : undefined)
 // 활동물품 지급 — 대부분 사전지급, 일부 미지급(물품지급 화면 대비 데이터 변주).
 const goodsOf = (i: number) => ({ jacket: i % 13 !== 0, bag: i % 9 !== 0, issuedAt: '2026-10-18' })
+// 정산 서류·지급계좌 — 실비 지급 사전 등록. 일부 미등록으로 두어 보완 동선이 살아있게 한다.
+// 계좌번호는 가상 생성값(결정적). 실제 개인정보 아님.
+const BANKS = ['농협', '신한', '국민', '카카오뱅크', '하나', '우리']
+const payoutOf = (i: number, name: string): PayoutInfo => {
+  const none = i % 17 === 0 // 완전 미등록
+  const partial = !none && i % 23 === 0 // 서류만 있고 계좌 미등록
+  if (none) return { idCard: false, bankbook: false }
+  if (partial) return { idCard: true, bankbook: false, registeredAt: '2026-10-16' }
+  return {
+    idCard: true,
+    bankbook: true,
+    bankName: BANKS[i % BANKS.length],
+    accountNo: `${String(100 + (i % 800)).padStart(3, '0')}-${String((i * 17) % 100).padStart(2, '0')}-${String(100000 + ((i * 971) % 900000))}`,
+    holder: name,
+    registeredAt: '2026-10-16',
+  }
+}
+// 교육 이수(사람 단위) — 오프라인 통합교육 후 관리자 일괄 인증의 결과 기록.
+// 사전 통합교육: 대부분 이수(미이수 소수 = 일괄 인증·미이수 드릴다운이 화면에서 의미 있게).
+// 현장교육: 일부만 이수 → 개인 상세 이력 섹션이 교육구분별로 변화 있게 보인다.
+const CERTIFIERS = ['운영본부 총괄', '자원봉사 담당', '거점 총괄']
+const eduOf = (i: number): EducationRecord[] => {
+  const recs: EducationRecord[] = []
+  if (i % 13 !== 5) // 미이수 소수(≈8%) — 나머지는 사전 통합교육 이수
+    recs.push({
+      kind: '사전 통합교육',
+      certifiedBy: CERTIFIERS[i % CERTIFIERS.length],
+      certifiedAt: `2026-10-17 ${14 + (i % 3)}:${String((i * 7) % 60).padStart(2, '0')}`,
+    })
+  if (i % 3 === 0) // 현장교육은 일부만
+    recs.push({
+      kind: '현장교육',
+      certifiedBy: CERTIFIERS[(i + 1) % CERTIFIERS.length],
+      certifiedAt: `2026-10-19 09:${String((i * 11) % 60).padStart(2, '0')}`,
+    })
+  return recs
+}
+
+// 결근 이력(5일 누적) — 정산은 계획일수가 아니라 실근무일수 기준.
+// 대부분 무결근, 일부만 1~2일 결근(집행 잔액이 0이 아니게 하는 변주).
+const absentDaysOf = (i: number) => (i % 37 === 0 ? 2 : i % 11 === 0 ? 1 : 0)
 
 // 거점 좌표 근처의 GPS 좌표(무인 체크인 이벤트용) — 결정적 미세 변위.
 const nearby = (c: Coords, i: number): Coords => ({
@@ -101,6 +142,7 @@ for (const z of zones) {
       const id = `as-${gid}`
       const a: StoredAssignment = {
         id,
+        personId: `p-${gid}`,
         personName: nameOf(gid),
         phone: phoneOf(gid),
         role: isManager ? '거점관리자' : '봉사자',
@@ -111,6 +153,8 @@ for (const z of zones) {
         zoneId: z.id,
         plannedInMin: shift === 'AM' ? H(10) : H(14),
         goods: goodsOf(gid),
+        absentDays: absentDaysOf(gid),
+        payout: payoutOf(gid, nameOf(gid)),
       }
 
       const noShow = NOSHOW.has(k)
@@ -163,6 +207,7 @@ for (let r = 0; r < RESERVE_COUNT; r++) {
   gid++
   assignments.push({
     id: `rs-${r + 1}`,
+    personId: `p-${gid}`,
     personName: nameOf(gid),
     phone: phoneOf(gid),
     role: '봉사자',
@@ -174,10 +219,17 @@ for (let r = 0; r < RESERVE_COUNT; r++) {
     plannedInMin: H(14),
     standby: nearby(STANDBY_POINTS[r % STANDBY_POINTS.length], gid),
     goods: goodsOf(gid),
+    payout: payoutOf(gid, nameOf(gid)),
   })
 }
 
 export { assignments, events }
+
+// 교육 이수 시드 — personId 키. 배치가 아니라 '사람'에 귀속되므로 별도 테이블로 둔다.
+// (같은 사람이 여러 날 배치를 가져도 이수는 한 번만 기록된다.)
+export const readiness: Record<string, EducationRecord[]> = Object.fromEntries(
+  assignments.map((a, i) => [a.personId, eduOf(i + 1)])
+)
 
 // ④ 이슈 ────────────────────────────────────────────────
 export const issues: Issue[] = [
@@ -187,7 +239,38 @@ export const issues: Issue[] = [
   { id: 'is-4', type: '민원', zoneId: 'z-photo', status: 'received', time: '14:17', message: '포토존 대기줄 안내 인력 보강 요청' },
 ]
 
-// ⑤ 공지·안내기준 ───────────────────────────────────────
+// ⑤ 먹거리 입점업체 등록 — 본공고 3-1: 푸드트럭 5 · 음식부스 5(파라솔 80).
+// 상호는 품목 기반 가명(블라인드 — 실존 업체·제휴사명 금지). 강릉 로컬 품목으로 구성.
+// 등록 대장이므로 시간 비의존. 서류 일부 미비를 심어 이행률이 100%가 아니게 둔다.
+const DOC_LABELS: { id: string; label: string }[] = [
+  { id: 'd-permit', label: '영업신고증 사본' },
+  { id: 'd-health', label: '종사자 건강진단결과서' },
+  { id: 'd-insure', label: '영업배상책임보험 증권' },
+  { id: 'd-fire', label: '소화기 비치 확인(K급 포함)' },
+  { id: 'd-gas', label: 'LPG·화기 취급 안전점검' },
+]
+// missing = 미등록 서류 id. 나머지는 등록 완료(at = 등록일).
+const docsOf = (missing: string[], at: string): VendorDoc[] =>
+  DOC_LABELS.map((d) => (missing.includes(d.id) ? { ...d, done: false } : { ...d, done: true, at }))
+
+export const foodVendors: StoredVendor[] = [
+  // ── 푸드트럭 5 (T존) ──
+  { id: 'fv-t1', name: '강릉 커피트럭', kind: 'truck', items: '핸드드립·아메리카노·라떼', spot: 'T-1', opHours: '10:00–18:00', contact: '010-3921-4477', docs: docsOf([], '2026-10-12'), registeredAt: '2026-10-12' },
+  { id: 'fv-t2', name: '감자옹심이 트럭', kind: 'truck', items: '감자옹심이·감자전', spot: 'T-2', opHours: '11:00–18:00', contact: '010-2884-1063', docs: docsOf([], '2026-10-12'), registeredAt: '2026-10-12' },
+  { id: 'fv-t3', name: '소떡소떡 트럭', kind: 'truck', items: '소떡소떡·핫도그', spot: 'T-3', opHours: '10:00–17:00', contact: '010-5517-2290', docs: docsOf(['d-gas'], '2026-10-13'), registeredAt: '2026-10-13', note: 'LPG 안전점검 미완 — 개장 전 확인 필요' },
+  { id: 'fv-t4', name: '수제버거 트럭', kind: 'truck', items: '수제버거·감자튀김', spot: 'T-4', opHours: '11:00–19:00', contact: '010-7302-8815', docs: docsOf([], '2026-10-13'), registeredAt: '2026-10-13' },
+  { id: 'fv-t5', name: '아이스크림 트럭', kind: 'truck', items: '소프트아이스크림·에이드', spot: 'T-5', opHours: '12:00–19:00', contact: '010-4468-9931', docs: docsOf(['d-health'], '2026-10-14'), registeredAt: '2026-10-14', note: '종사자 1명 건강진단결과서 미제출' },
+  // ── 음식부스 5 (B존) ──
+  { id: 'fv-b1', name: '초당순두부 부스', kind: 'booth', items: '순두부백반·모두부', spot: 'B-1', opHours: '10:00–18:00', contact: '010-6640-3372', docs: docsOf([], '2026-10-12'), registeredAt: '2026-10-12' },
+  { id: 'fv-b2', name: '강릉짬뽕 부스', kind: 'booth', items: '짬뽕·탕수육', spot: 'B-2', opHours: '11:00–18:00', contact: '010-2215-7708', docs: docsOf([], '2026-10-12'), registeredAt: '2026-10-12' },
+  { id: 'fv-b3', name: '닭강정 부스', kind: 'booth', items: '닭강정·튀김', spot: 'B-3', opHours: '10:00–18:00', contact: '010-8873-1154', docs: docsOf(['d-insure'], '2026-10-14'), registeredAt: '2026-10-14', note: '배상책임보험 증권 갱신본 대기' },
+  { id: 'fv-b4', name: '막국수 부스', kind: 'booth', items: '메밀막국수·수육', spot: 'B-4', opHours: '11:00–17:00', contact: '010-3097-5526', docs: docsOf([], '2026-10-13'), registeredAt: '2026-10-13' },
+  { id: 'fv-b5', name: '오징어순대 부스', kind: 'booth', items: '오징어순대·해산물전', spot: 'B-5', opHours: '10:00–16:00', contact: '010-5734-2681', docs: docsOf(['d-permit', 'd-health'], '2026-10-15'), registeredAt: '2026-10-15', note: '신규 입점 — 영업신고증·건강진단결과서 접수 대기' },
+]
+
+export const FOOD_PARASOLS = 80 // 음식판매·휴게구역 파라솔(본공고 3-1 정량 스펙)
+
+// ⑥ 공지·안내기준 ───────────────────────────────────────
 export const notices: Notice[] = [
   { id: 'nt-1', title: '오후조 교대 안내', body: '14:00 오전조 퇴근·오후조 투입 완료 확인. 미출근 인력 즉시 예비 대체.', scope: 'all', time: '13:55' },
   { id: 'nt-2', title: '기상 안내', body: '오후 3시경 강풍 예보 — 야외 포토존·해변거점 안전고지 문안 통일 배포.', scope: 'all', time: '13:50' },
@@ -203,5 +286,10 @@ export const DEPLOYMENT_PLAN: { date: string; headcount: number; shifts: number 
   { date: '2026-10-23', headcount: 55, shifts: 1 }, // 금 — 10:00~13:00 1교대(탄력 조정)
 ]
 
-export const EXPENSE_UNIT_PER_DAY = 24000 // 본공고 3-1: 1인 1일 24,000원
-export const ACTIVITY_GOODS_SETS = 110 // 바람막이·가방 세트(제작·배부비 별도 산출)
+export const EXPENSE_UNIT_PER_DAY = 24000 // RFP 3-1: 자원봉사자 1인당(교대근무자별) 24,000원 — 지급물품 대금 포함
+export const ACTIVITY_GOODS_SETS = 110 // 바람막이·가방 세트 — 1인 1세트
+// 물품 세트 단가 초기값(원). 확정 단가가 아니라 화면에서 조정하는 입력값의 시작점.
+// 이 값이 일일 지급기준을 결정한다: 일일 지급기준 = 24,000 − (세트단가 ÷ 4.5).
+export const ACTIVITY_GOODS_UNIT_COST = 35000
+// 원천징수율 초기값(%) — 3.3% = 사업소득 3% + 지방소득세 0.3%. 화면에서 조정하는 입력값.
+export const WITHHOLDING_RATE = 3.3

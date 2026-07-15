@@ -3,7 +3,7 @@ import { getAssignments, getZones } from '../../../lib/services'
 import { useLive, useNowMin } from '../../../lib/useLive'
 import type { Assignment, DutyStatus, Shift } from '../../../types'
 import { PageHeader } from '../../../components/layout'
-import { StatusBadge } from '../../../components/ui'
+import { StatusBadge, listNo } from '../../../components/ui'
 import { toMin, fmtDur } from '../../../lib/time'
 import PersonDetailModal from './PersonDetail'
 
@@ -102,7 +102,7 @@ export default function People() {
     <div>
       <PageHeader
         title="인력·자원봉사 관제"
-        summary="배치 인력 전원 2교대 출결 연동 로스터 — 행 클릭 시 개인 근퇴·정시(1h) 체크"
+        summary="배치 인력 전원 2교대 출결 연동 로스터"
         right={
           <div className="flex gap-2 text-caption">
             <span className="rounded-lg bg-surface px-2.5 py-1 font-semibold text-ink-muted shadow-sm">배치 <b className="tnum text-ink-strong">{assignments.filter((a) => !a.isReserve).length}</b></span>
@@ -201,7 +201,7 @@ export default function People() {
                   onClick={() => setSelectedId(a.id)}
                   className="group cursor-pointer border-b border-line-soft transition last:border-0 hover:bg-primary-50/50"
                 >
-                  <td className="tnum px-3 py-2.5 text-right text-ink-faint">{i + 1}</td>
+                  <td className="tnum px-3 py-2.5 text-right text-ink-faint">{listNo(i)}</td>
                   <td className="px-3 py-2.5">
                     <span className={`rounded-md px-1.5 py-0.5 text-caption font-semibold ${a.shift === 'AM' ? 'bg-info-soft text-info' : 'bg-primary-50 text-primary-700'}`}>
                       {shiftKo(a.shift)}
@@ -237,7 +237,7 @@ export default function People() {
         )}
       </div>
 
-      {selectedId && <PersonDetailModal id={selectedId} onClose={() => setSelectedId(null)} />}
+      {selectedId && <PersonDetailModal id={selectedId} tab="duty" onClose={() => setSelectedId(null)} />}
     </div>
   )
 }

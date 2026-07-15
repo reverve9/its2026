@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   getKpi,
   getZones,
@@ -6,6 +7,7 @@ import {
   getAttendanceEvents,
   getIssues,
   getNotices,
+  getEducationSummary,
 } from '../../../lib/services'
 import { useLive } from '../../../lib/useLive'
 import StaffingGapFlow from '../StaffingGapFlow'
@@ -25,8 +27,9 @@ export default function Dashboard() {
   const events = useLive(getAttendanceEvents)
   const issues = useLive(getIssues)
   const notices = useLive(getNotices)
+  const edu = useLive(getEducationSummary)
 
-  if (!kpi || !zones || !alerts || !events || !issues || !notices) return null
+  if (!kpi || !zones || !alerts || !events || !issues || !notices || !edu) return null
 
   const zoneName = Object.fromEntries(zones.map((z) => [z.id, z.name]))
   const openZones = zones.filter((z) => z.status === 'open').length
@@ -60,13 +63,26 @@ export default function Dashboard() {
       )}
 
       {/* KPI 스트립 — 교대 인지형 */}
-      <div className="mb-5 grid grid-cols-6 gap-3">
+      <div className="mb-5 grid grid-cols-7 gap-3">
         <StatTile label="배치 인원" value={kpi.total} unit="명" hint="오전 55 · 오후 55" />
         <StatTile label={`${shiftKo} 근무`} value={`${kpi.present}/${kpi.expected}`} unit="명" tone="primary" hint={`근무 ${kpi.onDuty} · 휴게이동 ${kpi.breakOrMoving}`} />
         <StatTile label="미출근" value={kpi.absent} unit="명" tone="critical" hint="예비 대체 검토" />
         <StatTile label="근무공백" value={kpi.gapAlerts} unit="거점" tone="critical" hint="예비 투입 필요" />
         <StatTile label="투입가능 예비" value={kpi.reserveAvailable} unit="명" tone="ok" />
         <StatTile label={`교대 후 경과`} value={kpi.minsSinceShiftStart} unit="분" hint={`운영 중 ${openZones}/${zones.length} · 이슈 ${openIssues}`} />
+        {/* 교육 이수율 — 미이수가 있으면 인력 현황의 미이수 명단으로 드릴다운. */}
+        <Link
+          to="/personnel?edu=pending"
+          className="rounded-xl transition hover:opacity-80"
+          aria-label={`사전 통합교육 미이수 ${edu.pending}명 명단 보기`}
+        >
+          <StatTile
+            label="교육 이수율"
+            value={`${edu.rate}%`}
+            tone={edu.pending ? 'warn' : 'ok'}
+            hint={`${edu.done}/${edu.total}명 · 미이수 ${edu.pending}`}
+          />
+        </Link>
       </div>
 
       {/* 좌: 거점 상황판 / 우: 경보 + 라이브 */}

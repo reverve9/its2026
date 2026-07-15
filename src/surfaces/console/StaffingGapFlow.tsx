@@ -11,11 +11,12 @@ export default function StaffingGapFlow({ zoneId, zoneName, onClose }: { zoneId:
   const [step, setStep] = useState(0)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [langOnly, setLangOnly] = useState(false)
+  const [eduOnly, setEduOnly] = useState(false)
   const [busy, setBusy] = useState(false)
   const [placedNames, setPlacedNames] = useState<string[]>([])
 
   const shortfall = zone ? Math.max(0, zone.quota - zone.present) : 0
-  const list = langOnly ? options.filter((o) => o.langMatch) : options
+  const list = options.filter((o) => (!langOnly || o.langMatch) && (!eduOnly || o.educated))
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -77,7 +78,7 @@ export default function StaffingGapFlow({ zoneId, zoneName, onClose }: { zoneId:
                 </p>
               </div>
               <p className="mt-3 text-label text-ink-muted">
-                관광지 무인 거점의 근무공백은 즉시 운영본부 보고 대상(과업 3-3). 대기 예비인력을 원격 투입합니다.
+                관광지 무인 거점의 근무공백은 즉시 운영본부 보고 대상입니다. 대기 예비인력을 원격 투입합니다.
               </p>
               <div className="mt-5 flex justify-end">
                 <button onClick={() => setStep(1)} className="rounded-lg bg-primary-600 px-4 py-2.5 text-label font-semibold text-white transition hover:bg-primary-700">예비인력 선택 →</button>
@@ -89,13 +90,21 @@ export default function StaffingGapFlow({ zoneId, zoneName, onClose }: { zoneId:
           {step === 1 && (
             <div>
               <div className="mb-3 flex items-center justify-between">
-                <span className="text-label text-ink-muted">최대 <b className="tnum text-ink-strong">{Math.max(shortfall, 1)}</b>명 선택 · 거리순 정렬</span>
-                <button
-                  onClick={() => setLangOnly((v) => !v)}
-                  className={`rounded-full px-3 py-1 text-caption font-semibold transition ${langOnly ? 'bg-primary-600 text-white' : 'bg-neutral-100 text-ink-muted'}`}
-                >
-                  외국어 가능만
-                </button>
+                <span className="text-label text-ink-muted">최대 <b className="tnum text-ink-strong">{Math.max(shortfall, 1)}</b>명 선택 · 교육 이수자 우선</span>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => setEduOnly((v) => !v)}
+                    className={`rounded-full px-3 py-1 text-caption font-semibold transition ${eduOnly ? 'bg-primary-600 text-white' : 'bg-neutral-100 text-ink-muted'}`}
+                  >
+                    교육 이수자만
+                  </button>
+                  <button
+                    onClick={() => setLangOnly((v) => !v)}
+                    className={`rounded-full px-3 py-1 text-caption font-semibold transition ${langOnly ? 'bg-primary-600 text-white' : 'bg-neutral-100 text-ink-muted'}`}
+                  >
+                    외국어 가능만
+                  </button>
+                </div>
               </div>
               <div className="space-y-2">
                 {list.map((o) => {
@@ -111,6 +120,10 @@ export default function StaffingGapFlow({ zoneId, zoneName, onClose }: { zoneId:
                         <div className="flex items-center gap-2">
                           <span className="text-label font-semibold text-ink-strong">{o.assignment.personName}</span>
                           {o.langMatch && <span className="rounded bg-info-soft px-1.5 py-0.5 text-caption font-semibold text-info">{o.assignment.lang?.join('·')}</span>}
+                          {/* 교육 미이수 = soft 경고. 선택은 막지 않는다. */}
+                          {!o.educated && (
+                            <span className="rounded bg-warn-soft px-1.5 py-0.5 text-caption font-semibold text-warn">교육 미이수</span>
+                          )}
                         </div>
                         <div className="tnum text-caption text-ink-muted">{o.assignment.phone}</div>
                       </div>

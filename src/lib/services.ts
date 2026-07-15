@@ -13,11 +13,25 @@ import {
   deploymentPlan,
   expenseUnitPerDay,
   activityGoodsSets,
+  activityGoodsUnitCost,
+  setGoodsUnitCost,
+  withholding,
+  setWithholdingRate,
+  opsDate,
   findAssignment,
   zoneOf,
   addEvent,
   addIssue,
   setIssueStatus,
+  setGoods,
+  setPayout,
+  educationOf,
+  certifyEducation,
+  revokeEducation,
+  rawVendors,
+  findVendor,
+  foodParasols,
+  setVendorDoc,
   placeReserve,
   hasEventKey,
   rawSafety,
@@ -42,6 +56,16 @@ import type {
   CheckMethod,
   Coords,
   IssueStatus,
+  GoodsIssue,
+  PayoutInfo,
+  PersonnelRecord,
+  GoodsSummary,
+  FoodVendor,
+  FoodSummary,
+  VendorKind,
+  EducationKind,
+  EducationRecord,
+  EducationSummary,
 } from '../types'
 
 // ── 조 상수 ─────────────────────────────────────────────
@@ -74,7 +98,7 @@ function derive(a: StoredAssignment, now: number): Assignment {
   // 예비인력(미배정) — 대기 상태, 정시체크 없음.
   if (a.isReserve && !a.zoneId) {
     return {
-      id: a.id, personName: a.personName, zoneId: null, role: a.role, shift: a.shift,
+      id: a.id, personId: a.personId, personName: a.personName, zoneId: null, role: a.role, shift: a.shift,
       date: a.date, isReserve: true, status: 'before', lang: a.lang, phone: a.phone, checks: [],
       standby: a.standby, goods: a.goods,
     }
@@ -106,7 +130,7 @@ function derive(a: StoredAssignment, now: number): Assignment {
   }
 
   return {
-    id: a.id, personName: a.personName, zoneId: a.zoneId, role: a.role, shift: a.shift,
+    id: a.id, personId: a.personId, personName: a.personName, zoneId: a.zoneId, role: a.role, shift: a.shift,
     date: a.date, isReserve: a.isReserve, status, lang: a.lang, phone: a.phone,
     checkedInAt: checkedIn ? fmtHM(checkinEv!.timeMin) : undefined,
     checkedOutAt: checkedOut ? fmtHM(checkoutEv!.timeMin) : undefined,
@@ -152,6 +176,7 @@ export interface ReserveOption {
   assignment: Assignment
   distanceKm: number | null // 대기 위치 → 대상 거점 거리
   langMatch: boolean // 외국어 가능(관광지 우선배치 근거)
+  educated: boolean // 사전 통합교육 이수 — 자격 신호(soft). 미이수여도 선택은 막지 않는다.
 }
 export async function getReserveOptions(zoneId: string): Promise<ReserveOption[]> {
   const zone = await getZone(zoneId)
@@ -161,8 +186,10 @@ export async function getReserveOptions(zoneId: string): Promise<ReserveOption[]
       assignment: r,
       distanceKm: zone && r.standby ? Math.round((distanceM(r.standby, zone.coords) / 1000) * 10) / 10 : null,
       langMatch: (r.lang?.length ?? 0) > 0,
+      educated: hasEducation(educationOf(r.personId), '사전 통합교육'),
     }))
-    .sort((a, b) => (a.distanceKm ?? 999) - (b.distanceKm ?? 999))
+    // 이수자 우선 → 그다음 거리순. 미이수는 뒤로 밀되 목록에서 빼지 않는다(하드 블록 금지).
+    .sort((a, b) => Number(b.educated) - Number(a.educated) || (a.distanceKm ?? 999) - (b.distanceKm ?? 999))
 }
 export async function getZone(id: string): Promise<Zone | undefined> {
   return (await getZones()).find((z) => z.id === id)
@@ -296,20 +323,112 @@ export async function computeFillRate(): Promise<number> {
   return list.length ? Math.round((present / list.length) * 100) : 0
 }
 
-// 실비 — 배치계획 × 단가(연인원 기준). 활동물품은 별도(placeholder).
+// 실비 — RFP 3-1: 1인당(교대근무자별) 24,000원. 이 단가에 지급물품 대금이 '포함'된다.
+// 따라서 물품은 총액에 더하는 게 아니라 총액에서 빼낸다(총액 고정, 내부 구성만 이동).
+//   1인 총액 = 평균 근무일(4.5) × 24,000 = 108,000
+//   일일 지급기준 = (108,000 − 물품세트단가) ÷ 4.5 = 24,000 − 물품세트단가/4.5
+// 평균 4.5일의 근거: 금요일만 1교대(55명) → 오전조 5일 · 오후조 4일 → 연인원 55×5+55×4 = 495.
 export async function computeExpenses(): Promise<ExpenseSummary> {
   const plan = deploymentPlan()
   const unit = expenseUnitPerDay()
-  const breakdown = plan.map((p) => ({ date: p.date, headcount: p.headcount, shifts: p.shifts, amount: p.headcount * unit }))
-  const personDays = plan.reduce((s, p) => s + p.headcount, 0)
-  const perDiemTotal = personDays * unit
+  const personDays = plan.reduce((s, p) => s + p.headcount, 0) // 495
+  const goodsSets = activityGoodsSets() // 110 — 1인 1세트
+  const headcount = goodsSets
+  const avgDays = personDays / headcount // 4.5
+  const perDiemTotal = personDays * unit // 11,880,000 — RFP 기준 총액(고정)
+
+  const goodsUnitCost = activityGoodsUnitCost() // 입력값
+  const goodsTotal = goodsSets * goodsUnitCost
+  const payoutTotal = perDiemTotal - goodsTotal
+  const dailyPayout = payoutTotal / personDays // = unit − goodsUnitCost/avgDays
+
+  // 원천징수 — 현물(활동물품)은 대상이 아니므로 일당(현금)에만 적용.
+  const rate = withholding()
+  const withholdingTotal = payoutTotal * (rate / 100)
+  const netPayoutTotal = payoutTotal - withholdingTotal
+  const perPersonPayout = avgDays * unit - goodsUnitCost
+
+  const breakdown = plan.map((p) => ({
+    date: p.date,
+    headcount: p.headcount,
+    shifts: p.shifts,
+    amount: Math.round(p.headcount * dailyPayout),
+  }))
+
   return {
-    unitPerDay: unit, personDays, perDiemTotal,
-    activityGoodsSets: activityGoodsSets(), activityGoodsCost: null,
-    breakdown, grandTotal: perDiemTotal,
+    unitPerDay: unit, personDays, headcount, avgDays, perDiemTotal,
+    goodsSets, goodsUnitCost, goodsTotal, payoutTotal, dailyPayout,
+    withholdingRate: rate, withholdingTotal, netPayoutTotal,
+    perPersonTotal: avgDays * unit,
+    perPersonPayout,
+    perPersonNet: perPersonPayout * (1 - rate / 100),
+    breakdown,
   }
 }
 export const getExpenses = computeExpenses
+
+// 물품 세트 단가 입력(R3) — 이 값 하나가 일일 지급기준·실지급 총액·개인별 정산에 전파된다.
+export async function setExpenseGoodsUnitCost(won: number): Promise<void> {
+  setGoodsUnitCost(won)
+}
+
+// 원천징수율 입력(R3) — 기본 3.3%. 요율 변경 시 실수령액이 전면 재계산된다.
+export async function setExpenseWithholdingRate(pct: number): Promise<void> {
+  setWithholdingRate(pct)
+}
+
+// ── 개인별 정산 내역 ────────────────────────────────────
+// 계획일수 ≠ 실근무일수 — 결근이 발생하므로 개인 실지급은 실근무일 기준으로 계산한다.
+// 물품은 근무일수와 무관하게 1인 1세트(이미 지급됨) → 결근자는 일당만 줄고 물품대금은 온전히 잡힌다.
+export interface SettlementRow {
+  id: string
+  personName: string
+  shift: Shift
+  zoneName: string
+  plannedDays: number // 계획 근무일(오전조 5 / 오후조 4 — 금 1교대)
+  absentDays: number // 결근일(5일 누적)
+  workedDays: number // 실근무일 = 계획 − 결근
+  payout: number // 일당(현금) = 실근무일 × 일일 지급기준
+  withholding: number // 원천징수(일당 × 요율) — 현물은 대상 아님
+  net: number // 실수령액(일당 − 원천징수)
+  goodsCost: number // 물품 세트 단가(현물 — 원천징수 대상 아님)
+  total: number // 1인 정산 총액(일당 + 물품, 세전 기준 = 24,000 산정 근거)
+  docsReady: boolean // 정산 서류·계좌 등록 완료 — 미비면 지급 보류
+  bankName?: string
+  accountNo?: string // 마스킹 전 원본(화면에서 maskAccount 로 표기)
+}
+
+export const plannedDaysOf = (shift: Shift): number => (shift === 'AM' ? 5 : 4)
+
+export async function getSettlementRows(): Promise<SettlementRow[]> {
+  const { dailyPayout, goodsUnitCost, withholdingRate } = await computeExpenses()
+  return rawAssignments()
+    .filter((a) => !a.isReserve)
+    .map((a) => {
+      const plannedDays = plannedDaysOf(a.shift)
+      const absentDays = Math.min(a.absentDays ?? 0, plannedDays)
+      const workedDays = plannedDays - absentDays
+      const payout = Math.round(workedDays * dailyPayout)
+      const wh = Math.round(payout * (withholdingRate / 100))
+      // 물품은 실제 지급 여부(인력 현황의 goods)와 연동 — 2종 모두 지급된 경우만 대금 계상.
+      const issued = !!(a.goods?.jacket && a.goods?.bag)
+      const goodsCost = issued ? goodsUnitCost : 0
+      const pay = a.payout ?? PAYOUT_NONE
+      return {
+        id: a.id,
+        personName: a.personName,
+        shift: a.shift,
+        zoneName: zoneOf(a.zoneId)?.name ?? '—',
+        plannedDays, absentDays, workedDays, payout, goodsCost,
+        withholding: wh,
+        net: payout - wh,
+        total: payout + goodsCost,
+        docsReady: payoutReady(pay),
+        bankName: pay.bankName,
+        accountNo: pay.accountNo,
+      }
+    })
+}
 
 // 경보 — 근무공백(critical) + 정시체크 누락(warning) + 교대 안내(info).
 export async function getAlerts(): Promise<OpsAlert[]> {
@@ -413,6 +532,146 @@ export async function assignReserve(alertId: string, reserveAssignmentId: string
     assignmentId: reserveAssignmentId, kind: 'checkin', timeMin: now, method,
   })
   return true
+}
+
+// ── 인력 현황(운영 대장) ────────────────────────────────
+// 시간 비의존(R5 예외 아님 — 애초에 파생할 시각 축이 없는 마스터 사실만 반환).
+// 스크러버를 밀어도 이 값들은 변하지 않는다 = 실시간 관제(인력 관리)와의 역할 분담.
+const GOODS_NONE: GoodsIssue = { jacket: false, bag: false }
+const PAYOUT_NONE: PayoutInfo = { idCard: false, bankbook: false }
+// 정산 준비 완료 = 신분증·통장 사본 + 계좌번호까지 등록.
+export const payoutReady = (p: PayoutInfo): boolean => p.idCard && p.bankbook && !!p.accountNo
+
+const toPersonnel = (a: StoredAssignment): PersonnelRecord => ({
+  id: a.id,
+  personId: a.personId,
+  education: educationOf(a.personId),
+  personName: a.personName,
+  phone: a.phone,
+  role: a.role,
+  shift: a.shift,
+  zoneId: a.zoneId,
+  isReserve: a.isReserve,
+  lang: a.lang ?? [],
+  goods: a.goods ?? GOODS_NONE,
+  payout: a.payout ?? PAYOUT_NONE,
+})
+
+export async function getPersonnel(): Promise<PersonnelRecord[]> {
+  return rawAssignments().map(toPersonnel)
+}
+
+export async function getPersonnelRecord(id: string): Promise<PersonnelRecord | undefined> {
+  const a = findAssignment(id)
+  return a ? toPersonnel(a) : undefined
+}
+
+export async function getGoodsSummary(): Promise<GoodsSummary> {
+  const all = rawAssignments()
+  const list = all.map((a) => a.goods ?? GOODS_NONE)
+  const pay = all.map((a) => a.payout ?? PAYOUT_NONE)
+  return {
+    total: list.length,
+    jacket: list.filter((g) => g.jacket).length,
+    bag: list.filter((g) => g.bag).length,
+    complete: list.filter((g) => g.jacket && g.bag).length,
+    pending: list.filter((g) => !g.jacket || !g.bag).length,
+    payoutReady: pay.filter(payoutReady).length,
+    payoutPending: pay.filter((p) => !payoutReady(p)).length,
+  }
+}
+
+// ── 교육 이수(사람 단위) ────────────────────────────────
+// 인증자 목값 — 현재 로그인한 운영본부 관리자.
+export const CURRENT_OPERATOR = '운영본부 총괄'
+
+export const hasEducation = (recs: EducationRecord[], kind: EducationKind): boolean =>
+  recs.some((r) => r.kind === kind)
+export const educationRecord = (recs: EducationRecord[], kind: EducationKind) =>
+  recs.find((r) => r.kind === kind)
+
+export async function getEducation(personId: string): Promise<EducationRecord[]> {
+  return educationOf(personId)
+}
+
+export async function getEducationSummary(): Promise<EducationSummary> {
+  const list = rawAssignments().filter((a) => !a.isReserve)
+  const done = list.filter((a) => hasEducation(educationOf(a.personId), '사전 통합교육')).length
+  return {
+    total: list.length,
+    done,
+    pending: list.length - done,
+    rate: list.length ? Math.round((done / list.length) * 100) : 0,
+    fieldDone: list.filter((a) => hasEducation(educationOf(a.personId), '현장교육')).length,
+  }
+}
+
+// 일괄 인증(R3) — 오프라인 통합교육 참석자를 한 번에 처리. 증빙 3종(인증자·일시·교육구분) 기록.
+export async function certifyEducationBatch(
+  personIds: string[],
+  kind: EducationKind
+): Promise<number> {
+  const at = `${opsDate()} ${getNowHM()}`
+  return certifyEducation(personIds, kind, CURRENT_OPERATOR, at)
+}
+
+export async function revokeEducationOf(personId: string, kind: EducationKind): Promise<boolean> {
+  return revokeEducation(personId, kind)
+}
+
+// 정산 서류·지급계좌 등록(R3). 정산은 행사 후 일괄이므로 대장에서 사전 등록해 둔다.
+export async function setPayoutInfo(assignmentId: string, patch: Partial<PayoutInfo>): Promise<boolean> {
+  return setPayout(assignmentId, patch, opsDate())
+}
+
+// 계좌번호 마스킹 — 개인정보 최소노출(Ⅳ-8). 뒤 4자리만 노출.
+export const maskAccount = (no?: string): string => {
+  if (!no) return '—'
+  const tail = no.replace(/\D/g, '').slice(-4)
+  return `****-${tail}`
+}
+
+// 활동물품 지급/회수 기록(R3 — 명령형 쓰기). 지급일은 운영일 기준.
+export async function issueGoods(
+  assignmentId: string,
+  patch: Partial<Omit<GoodsIssue, 'issuedAt'>>
+): Promise<boolean> {
+  return setGoods(assignmentId, patch, opsDate())
+}
+
+// ── 먹거리 입점업체 등록(운영 대장) ─────────────────────
+// 인력 현황과 동일 성격 — 시간 비의존 마스터. 클라이언트(업체)앱이 없으므로
+// 업체 셀프 등록이 아니라 운영본부가 업체 정보·구비서류를 등록·관리한다.
+const docsComplete = (v: FoodVendor) => v.docs.every((d) => d.done)
+
+export async function getFoodVendors(kind?: VendorKind): Promise<FoodVendor[]> {
+  const list = rawVendors()
+  return kind ? list.filter((v) => v.kind === kind) : list
+}
+
+export async function getFoodVendor(id: string): Promise<FoodVendor | undefined> {
+  return findVendor(id)
+}
+
+export async function getFoodSummary(): Promise<FoodSummary> {
+  const list = rawVendors()
+  const docs = list.flatMap((v) => v.docs)
+  return {
+    trucks: list.filter((v) => v.kind === 'truck').length,
+    booths: list.filter((v) => v.kind === 'booth').length,
+    total: list.length,
+    registered: list.filter(docsComplete).length,
+    docDone: docs.filter((d) => d.done).length,
+    docTotal: docs.length,
+    pendingVendors: list.filter((v) => !docsComplete(v)).length,
+  }
+}
+
+export const getFoodParasols = async (): Promise<number> => foodParasols()
+
+// 구비서류 등록/해제(R3 — 명령형 쓰기). 등록일은 운영일 기준.
+export async function registerVendorDoc(vendorId: string, docId: string, done: boolean): Promise<boolean> {
+  return setVendorDoc(vendorId, docId, done, opsDate())
 }
 
 // 순회 랜덤감사 — 무인(관광지) 거점 셀프체크 무결성의 3번째 층(핸드오프 §3).

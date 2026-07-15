@@ -41,6 +41,7 @@ export interface Zone {
 export type StaffRole = '봉사자' | '거점관리자' | '운영인력'
 export interface Assignment {
   id: string
+  personId: string // 사람 단위 식별자 — 교육 이수 등 '사람에 귀속되는' 사실의 키(배치 id와 별개)
   personName: string
   zoneId: string | null // 예비인력은 미배정(null)
   role: StaffRole
@@ -55,6 +56,7 @@ export interface Assignment {
   checks: CheckState[] // 파생 — 조별 슬롯 정렬, 현재시각까지 지난 슬롯만
   standby?: Coords // 예비인력 대기 위치(근무공백 대응 거리 산정용)
   goods?: GoodsIssue // 활동물품 지급 현황(인력 행정 — 물품지급 화면·상세 모달 공유)
+  payout?: PayoutInfo // 정산 서류·지급계좌(인력 현황 대장에서 등록)
 }
 
 // 활동물품(바람막이·가방) 지급 — 본공고 3-1 제작·배부. 시간 비의존 마스터 데이터.
@@ -62,6 +64,76 @@ export interface GoodsIssue {
   jacket: boolean // 바람막이 지급
   bag: boolean // 가방 지급
   issuedAt?: string // 지급일(YYYY-MM-DD)
+}
+
+// 정산 구비서류·지급계좌 — 실비 지급을 위한 사전 등록 항목(시간 비의존 마스터).
+// 정산은 일일 단위가 아니라 행사 후 일괄이므로, 일일보고가 아니라 인력 현황(대장)에서 관리한다.
+// ※ 개인정보 최소수집 — 행사 종료 후 즉시 파기(제안요청서 Ⅳ-8). 화면 표기는 마스킹.
+export interface PayoutInfo {
+  idCard: boolean // 신분증 사본 첨부
+  bankbook: boolean // 통장 사본 첨부
+  bankName?: string // 은행
+  accountNo?: string // 계좌번호
+  holder?: string // 예금주(본인 확인)
+  registeredAt?: string // 등록일(YYYY-MM-DD)
+}
+
+// 인력 명부 레코드(운영 대장) — 시간 비의존 마스터.
+// 근태·상태·정시체크는 여기 없다(그건 Assignment = 오늘의 실시간 배치).
+// 인력 현황 화면의 축은 '사람', 인력 관리 화면의 축은 '지금'.
+export interface PersonnelRecord {
+  id: string // assignment id — 개인 상세 모달 공유 키
+  personId: string // 사람 단위 키 — 교육 이수 조회용
+  education: EducationRecord[] // 이수 이력(사람 단위에서 끌어옴)
+  personName: string
+  phone: string
+  role: StaffRole
+  shift: Shift
+  zoneId: string | null
+  isReserve: boolean
+  lang: string[]
+  goods: GoodsIssue
+  payout: PayoutInfo
+}
+
+// 활동물품 지급 집계(파생) — 인력 현황 상단 요약.
+export interface GoodsSummary {
+  total: number // 명부 총원
+  jacket: number // 바람막이 지급 완료
+  bag: number // 가방 지급 완료
+  complete: number // 2종 모두 지급
+  pending: number // 1종 이상 미지급
+  payoutReady: number // 정산 서류(신분증·통장·계좌) 등록 완료
+  payoutPending: number // 정산 서류 미비
+}
+
+// 교육 이수 집계(파생) — 대시보드 KPI·인력 현황 요약.
+export interface EducationSummary {
+  total: number // 대상 인원(배치 인력)
+  done: number // 사전 통합교육 이수
+  pending: number // 사전 통합교육 미이수
+  rate: number // 이수율(%)
+  fieldDone: number // 현장교육 이수
+}
+
+// ②-2 교육 이수 — **봉사자(사람) 단위** 귀속 ───────────────
+// 배치(assignment)가 아니라 사람에 붙는다: 한 번 이수하면 그 사람의 모든 배치에 적용.
+// 이수 처리는 오프라인 통합교육 후 관리자가 일괄(batch) 인증하며, 봉사자 self-확인은 없다.
+// 미이수는 soft 플래그 — 예비 투입을 막지 않고 경고·정렬로만 다룬다.
+export type EducationKind = '사전 통합교육' | '현장교육' // 확장 가능(향후 종류 추가)
+export const EDUCATION_KINDS: EducationKind[] = ['사전 통합교육', '현장교육']
+
+// 증빙 3종 — 누가(인증자) · 언제(이수 일시) · 무슨 교육(교육구분).
+export interface EducationRecord {
+  kind: EducationKind
+  certifiedBy: string // 인증한 관리자
+  certifiedAt: string // 이수 일시 'YYYY-MM-DD HH:mm'
+}
+
+// 사람 단위 준비도. 향후 물품수령·개인정보 동의 등을 형제 필드로 붙일 수 있게 열어둔다.
+export interface Readiness {
+  personId: string
+  education: EducationRecord[] // 이수한 것만 담는다(없으면 미이수)
 }
 
 // ③ 출결 이벤트(scan/gps) — 실시간 로그·멱등 ─────────────
@@ -99,7 +171,46 @@ export interface Issue {
   message: string
 }
 
-// ⑤ 공지·안내기준(notices) ───────────────────────────────
+// ⑤ 먹거리 입점업체 등록(food) ───────────────────────────
+// 본공고 3-1 정량 스펙: 음식부스 5 · 푸드트럭 5 (파라솔 80). 음식판매·휴게구역 입점.
+// 성격 = 업체 정보 '등록 대장'. 클라이언트(업체)앱이 없으므로 업체 셀프 등록이 아니라
+// 운영본부가 입점업체 정보·구비서류를 등록·관리한다. 시간 비의존 마스터(인력 현황과 동일 성격).
+// ※ 블라인드 유지(SPEC §2.9) — 상호는 품목 기반 가명. 실존 업체·제휴사명 금지.
+export type VendorKind = 'truck' | 'booth'
+
+// 구비서류·확인 항목 — 식중독·LPG 화재 리스크 관리(안전·비상 6-3과 같은 결).
+export interface VendorDoc {
+  id: string
+  label: string
+  done: boolean
+  at?: string // 등록일(YYYY-MM-DD)
+}
+
+export interface FoodVendor {
+  id: string
+  name: string // 품목 기반 가명
+  kind: VendorKind
+  items: string // 주요 품목
+  spot: string // 배치 구획(음식판매·휴게구역 내)
+  opHours: string // 신청 운영시간(등록 정보 — 실시간 상태 아님)
+  contact: string // 대표 연락처
+  docs: VendorDoc[] // 구비서류 등록 상태
+  registeredAt?: string // 업체 등록일(YYYY-MM-DD)
+  note?: string
+}
+
+// 업체 등록 집계(파생).
+export interface FoodSummary {
+  trucks: number
+  booths: number
+  total: number
+  registered: number // 서류까지 등록 완료된 업체
+  docDone: number // 등록 완료 서류 항목 수
+  docTotal: number // 전체 서류 항목 수
+  pendingVendors: number // 서류 미비 업체 수
+}
+
+// ⑥ 공지·안내기준(notices) ───────────────────────────────
 export interface Notice {
   id: string
   title: string
@@ -135,13 +246,26 @@ export interface KpiSummary {
   minsSinceShiftStart: number // 현재 조 시작 후 경과 분(교대 직후 리스크 표시)
 }
 
-// 실비 정산 요약(파생) — 배치계획 × 단가.
+// 실비 정산 요약(파생) — RFP 3-1: 자원봉사자 1인당(교대근무자별) 24,000원.
+// ※ 이 24,000원 안에 지급물품(바람막이·가방) 대금이 포함된다 → 물품은 총액에 '더하는' 게 아니라
+//   총액에서 '빼내는' 항목이다. 일일 지급기준 = 24,000 − (물품세트단가 ÷ 1인 평균 근무일).
+//   총액(11,880,000원)은 RFP 기준이라 고정 — 물품 단가를 바꿔도 총액은 불변, 내부 구성만 이동한다.
 export interface ExpenseSummary {
-  unitPerDay: number // 1인 1일 단가(원) — 본공고 3-1
-  personDays: number // 연인원
-  perDiemTotal: number // 실비 소계(연인원 × 단가)
-  activityGoodsSets: number // 활동물품 세트 수(바람막이·가방)
-  activityGoodsCost: number | null // 활동물품 제작·배부비(별도 산출 — 미정 placeholder)
-  breakdown: { date: string; headcount: number; shifts: number; amount: number }[]
-  grandTotal: number // 실비 소계 + 활동물품(있으면)
+  unitPerDay: number // 1인 1일 기준 단가(원) — RFP 3-1. 물품 대금 포함
+  personDays: number // 연인원(495 = 110×4 + 55)
+  headcount: number // 실인원(110 = 연인원 ÷ 평균 근무일)
+  avgDays: number // 1인 평균 근무일(4.5 — 금요일 1교대 반영)
+  perDiemTotal: number // 총 실비(연인원 × 단가) — RFP 기준 총액, 고정
+  goodsSets: number // 활동물품 세트 수(110 — 1인 1세트)
+  goodsUnitCost: number // 물품 세트 단가(입력값 — 바람막이+가방)
+  goodsTotal: number // 물품 총액(세트 수 × 단가)
+  payoutTotal: number // 일당 총액(총 실비 − 물품 총액) — 현금 지급분
+  dailyPayout: number // 일일 지급기준(일당 총액 ÷ 연인원)
+  withholdingRate: number // 원천징수율(%) — 입력값. 기본 3.3%
+  withholdingTotal: number // 원천징수 총액(일당 총액 × 요율) — 현물은 대상 아님
+  netPayoutTotal: number // 실수령 총액(일당 총액 − 원천징수)
+  perPersonTotal: number // 1인 총액(평균 근무일 × 단가)
+  perPersonPayout: number // 1인 일당(1인 총액 − 물품 세트 단가)
+  perPersonNet: number // 1인 실수령(일당 − 원천징수)
+  breakdown: { date: string; headcount: number; shifts: number; amount: number }[] // 일자별 일당
 }

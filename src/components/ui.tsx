@@ -1,5 +1,8 @@
 import type { DutyStatus } from '../types'
 
+// 리스트 순번 표기 — 한 자리도 두 자리로(1 → 01). 대장류 표에서 자릿수가 흔들리지 않게.
+export const listNo = (i: number): string => String(i + 1).padStart(2, '0')
+
 // 근태 상태 메타 — v3 토큰(ok/warn/info/critical + soft 배경).
 // 색만으로 의미 전달하지 않도록 점(dot)+라벨 항상 동반.
 export const statusMeta: Record<

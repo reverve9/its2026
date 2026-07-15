@@ -6,6 +6,7 @@ import { StatusBadge, Fill } from '../../components/ui'
 import type { FieldSession } from '../../lib/session'
 import type { Assignment, IssueType } from '../../types'
 import logoW from '../../assets/logo-its-w.png'
+import bgHeader from '../../assets/bg-field-header.jpg'
 
 // QR 스캐너(html5-qrcode ~400KB)는 열 때만 로드 — 메인 번들 경량 유지.
 const QrScanner = lazy(() => import('../../components/QrScanner'))
@@ -75,7 +76,10 @@ export default function ManagerHome({ session, onLogout }: { session: FieldSessi
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between bg-primary-700 px-5 pb-4 pt-8">
+      <header
+        className="flex items-center justify-between bg-primary-900 bg-cover bg-center px-5 pb-4 pt-6"
+        style={{ backgroundImage: `url(${bgHeader})` }}
+      >
         <img src={logoW} alt="강릉 ITS 세계총회 2026" className="h-14 w-auto" />
         <button onClick={onLogout} className="rounded-lg bg-white/10 px-2.5 py-1 text-caption font-semibold text-white/90 transition hover:bg-white/20">
           로그아웃

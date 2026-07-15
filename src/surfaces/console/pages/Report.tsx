@@ -1,5 +1,5 @@
 import {
-  getKpi, getAssignments, getZones, getIssues, getSafety, getExpenses,
+  getKpi, getAssignments, getZones, getIssues, getSafety,
   computeStaffingGaps, computeCheckCompliance, OPS_INFO,
 } from '../../../lib/services'
 import { useLive, useNowMin } from '../../../lib/useLive'
@@ -24,11 +24,10 @@ export default function Report() {
   const zones = useLive(getZones) ?? []
   const issues = useLive(getIssues) ?? []
   const safety = useLive(getSafety)
-  const expenses = useLive(getExpenses)
   const gaps = useLive(computeStaffingGaps) ?? []
   const compliance = useLive(computeCheckCompliance) ?? []
 
-  if (!kpi || !assignments || !safety || !expenses) return null
+  if (!kpi || !assignments || !safety) return null
 
   const nonReserve = assignments.filter((a) => !a.isReserve)
   const shiftStat = (s: 'AM' | 'PM') => {
@@ -39,7 +38,6 @@ export default function Report() {
   const am = shiftStat('AM')
   const pm = shiftStat('PM')
   const issueBy = (st: string) => issues.filter((i) => i.status === st).length
-  const won = (n: number) => n.toLocaleString('ko-KR')
   const hazardChecked = safety.hazards.filter((h) => h.checked).length
 
   return (
@@ -115,7 +113,7 @@ export default function Report() {
           </Block>
 
           {/* 3. 안전관리 */}
-          <Block n={3} title="안전관리 (중대재해 6-3)">
+          <Block n={3} title="안전관리">
             <div className="space-y-1.5 text-label text-ink-base">
               <div>· 작업중지: {safety.workStop.active ? <b className="text-critical">발령 중 ({safety.workStop.at}) — {safety.workStop.reason}</b> : <span className="text-ok">발령 없음(정상 운영)</span>}</div>
               <div>· 기상특보 야외중단: {safety.weatherStop.active ? <b className="text-warn">전파 중 ({safety.weatherStop.at})</b> : '해당 없음'}</div>
@@ -134,18 +132,8 @@ export default function Report() {
             </div>
           </Block>
 
-          {/* 5. 실비 정산 */}
-          <Block n={5} title="실비 정산 요약">
-            <div className="flex flex-wrap gap-x-8 gap-y-1 text-label text-ink-base">
-              <span>단가 <b className="tnum">{won(expenses.unitPerDay)}원</b>/1인 1일</span>
-              <span>연인원 <b className="tnum">{expenses.personDays}명</b></span>
-              <span>실비 소계 <b className="tnum text-primary-700">{won(expenses.perDiemTotal)}원</b></span>
-              <span className="text-ink-muted">+ 활동물품 {expenses.activityGoodsSets}세트(별도 산출)</span>
-            </div>
-          </Block>
-
-          {/* 6. 특이·조치사항 */}
-          <Block n={6} title="특이·조치사항">
+          {/* 5. 특이·조치사항 — 정산은 일일 단위로 하지 않으므로 일일보고에서 제외(정산 화면 소관). */}
+          <Block n={5} title="특이·조치사항">
             <ul className="space-y-1 text-label text-ink-base">
               {gaps.map((g) => <li key={g.zoneId}>· {g.zoneName} 근무공백 {g.shortfall}명 — 예비인력 투입 조치.</li>)}
               {compliance.map((c) => <li key={c.assignmentId}>· {c.zoneName} {c.personName} 정시체크 미이행({c.missedSlots.join('·')}) — 연락 확인.</li>)}

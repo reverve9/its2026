@@ -3,6 +3,9 @@ import ConsoleLayout from './surfaces/console/ConsoleLayout'
 import FieldLayout from './surfaces/field/FieldLayout'
 import Dashboard from './surfaces/console/pages/Dashboard'
 import People from './surfaces/console/pages/People'
+import Personnel from './surfaces/console/pages/Personnel'
+import FoodVendors from './surfaces/console/pages/FoodVendors'
+import Settlement from './surfaces/console/pages/Settlement'
 import Safety from './surfaces/console/pages/Safety'
 import Issues from './surfaces/console/pages/Issues'
 import Report from './surfaces/console/pages/Report'
@@ -56,24 +59,11 @@ export default function App() {
         <Route element={<ConsoleLayout />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/people" element={<People />} />
-          <Route
-            path="/personnel"
-            element={<Placeholder title="인력 명부" note="배치 인력 전원 신상·연락처·외국어·배치·역할·비상연락망 대장(정적). 개인 상세는 관제 로스터와 모달 공유(근태 / 명부·물품 탭). 개인정보 최소수집·행사 후 즉시 파기(Ⅳ-8). 제작 예정." />}
-          />
-          <Route
-            path="/goods"
-            element={<Placeholder title="물품지급 현황" note="활동물품(바람막이·가방) 110세트 지급/미지급·잔여·지급일 트래킹 (본공고 3-1 제작·배부). 제작 예정." />}
-          />
+          <Route path="/personnel" element={<Personnel />} />
+          <Route path="/vendors" element={<FoodVendors />} />
           <Route path="/safety" element={<Safety />} />
           <Route path="/report" element={<Report />} />
-          <Route
-            path="/settlement"
-            element={<Placeholder title="실비 정산 현황" note="출결·누적시간 기반 식비·교통비 자동 산출 집계 — 총액·거점별·일자별 (과업 3-1). 제작 예정." />}
-          />
-          <Route
-            path="/settlement/detail"
-            element={<Placeholder title="개인별 정산 내역" note="1인당 출결 연동 실비(식비·교통비) 내역. 제작 예정." />}
-          />
+          <Route path="/settlement" element={<Settlement />} />
           <Route
             path="/settlement/close"
             element={<Placeholder title="정산 마감·산출내역서" note="일자별 마감 + 산출내역서 출력(제안서 산출내역 근거). 제작 예정." />}

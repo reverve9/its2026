@@ -58,7 +58,7 @@ export default function Safety() {
         <div className="col-span-2 flex flex-col gap-5">
           {/* 작업중지 발령 */}
           {!ws.active && (
-            <Section title="작업중지 발령 (중대재해처벌법 6-3)">
+            <Section title="작업중지 발령">
               <p className="text-label text-ink-muted">급박한 위험 시 즉시 작업중지. 발령 사유가 기록되고 전 거점에 전파됩니다.</p>
               <div className="mt-3 flex gap-2">
                 <input
