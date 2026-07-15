@@ -59,7 +59,11 @@ export default function ManagerHome({ session, onLogout }: { session: FieldSessi
 
   if (!me || !zone) return <div className="grid h-full place-items-center text-label text-ink-muted">불러오는 중…</div>
 
-  const crew = all.filter((a) => a.zoneId === zone.id && a.shift === me.shift && !a.isReserve)
+  // 거점관리자가 출결을 관리하는 대상은 자원봉사자다 — 관리자 자신(운영인력)을 넣으면
+  // 목록이 9명인데 거점 현황은 8/8(봉사자 정원)로 어긋난다.
+  const crew = all.filter(
+    (a) => a.zoneId === zone.id && a.shift === me.shift && !a.isReserve && a.kind === '자원봉사자'
+  )
   const absent = crew.filter((a) => a.status === 'absent')
   const missed = crew.filter((a) => a.checks.some((c) => c === 'missed'))
   const gap = zone.present < zone.quota

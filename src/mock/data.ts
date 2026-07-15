@@ -7,7 +7,9 @@
 // services 가 '현재 시각'을 기준으로 이 사실들에서 상태·checks 를 파생한다.
 // 기준 시각 = 2026-10-21(수) 14:20 → 오전조 퇴근완료, 오후조 출근 중(미출근 3명 = B플로우 트리거).
 
-import type { Zone, Issue, Notice, Coords, VendorDoc, PayoutInfo, EducationRecord } from '../types'
+import type {
+  Zone, Issue, Notice, Coords, VendorDoc, PayoutInfo, EducationRecord, Employment, CheckMethod,
+} from '../types'
 import type { StoredAssignment, StoredEvent, StoredVendor } from '../lib/store'
 
 export const SEED_DATE = '2026-10-21'
@@ -65,12 +67,13 @@ const payoutOf = (i: number, name: string): PayoutInfo => {
 // 사전 통합교육: 대부분 이수(미이수 소수 = 일괄 인증·미이수 드릴다운이 화면에서 의미 있게).
 // 현장교육: 일부만 이수 → 개인 상세 이력 섹션이 교육구분별로 변화 있게 보인다.
 const CERTIFIERS = ['운영본부 총괄', '자원봉사 담당', '거점 총괄']
-// i=111~117 은 예비인력 구간. 예비 중 1명(p-113)을 미이수로 둬야 근무공백 대응의
+// 교육 이수는 자원봉사자 항목이다(운영인력은 자체 교육 — gid 111~132 은 여기 안 들어온다).
+// gid 1~110 배치 봉사자 · 133~139 예비. 예비 중 1명(p-135)을 미이수로 둬야 근무공백 대응의
 // '미이수 soft 경고 + 이수자 우선 정렬'이 화면에서 실제로 보인다(전원 이수면 캡쳐 불가).
-// 이수율 KPI 는 배치 인력만 세므로 이 예외는 92% 수치에 영향 없다.
+// 이수율 KPI 는 배치 봉사자만 세므로 이 예외는 92% 수치에 영향 없다.
 const eduOf = (i: number): EducationRecord[] => {
   const recs: EducationRecord[] = []
-  if (i % 13 !== 5 && i !== 113) // 미이수 소수(≈8%) — 나머지는 사전 통합교육 이수
+  if (i % 13 !== 5 && i !== 135) // 미이수 소수(≈8%) — 나머지는 사전 통합교육 이수
     recs.push({
       kind: '사전 통합교육',
       certifiedBy: CERTIFIERS[i % CERTIFIERS.length],
@@ -95,6 +98,44 @@ const nearby = (c: Coords, i: number): Coords => ({
   lng: +(c.lng + (((i * 3) % 5) - 2) * 0.0002).toFixed(6),
 })
 
+// ── 운영인력(직영 스태프) ────────────────────────────────
+// 자원봉사자 110명과 별개. 실비(24,000) 대상이 아니며 발주처 보고 대상도 아니다 —
+// 직원은 급여라 정산에서 미산정, 일용만 시급 기준으로 산정한다.
+//
+// 거점관리자 10명 중 직원 2명(관리자 순번 1·2 = 종합안내소 오전·오후).
+// 나머지 8명은 일용 — 유인 거점 스캔·순회는 일용으로 충당하는 현실 구성.
+const MANAGER_EMPLOYEE_SEQ = new Set([1, 2])
+
+// 현장운영 12명 — 운영본부 상주. 직원 4(책임 직무) + 일용 8(교대 현장직).
+const STAFF_ROSTER: { duty: string; employment: Employment }[] = [
+  { duty: '운영 총괄', employment: '직원' },
+  { duty: '안전 관리', employment: '직원' },
+  { duty: '인력·정산', employment: '직원' },
+  { duty: '민원 대응', employment: '직원' },
+  { duty: '물품 관리', employment: '일용' },
+  { duty: '물품 관리', employment: '일용' },
+  { duty: '거점 순회', employment: '일용' },
+  { duty: '거점 순회', employment: '일용' },
+  { duty: '거점 순회', employment: '일용' },
+  { duty: '본부 지원', employment: '일용' },
+  { duty: '본부 지원', employment: '일용' },
+  { duty: '본부 지원', employment: '일용' },
+]
+
+// 현장운영 근무시간 — 1일 10시간(08:30~18:30). 봉사자 4시간 교대보다 길다(설치·정리 포함).
+// 시급 × 이 시간 = 일급. 둘 다 화면 입력값이므로 여기 값은 초기값일 뿐이다.
+const STAFF_IN_MIN = H(8, 30)
+const STAFF_OUT_MIN = H(18, 30)
+export const STAFF_HOURS_PER_DAY = 10
+export const STAFF_HOURLY_WAGE = 12000 // 일급 120,000 = 12,000 × 10h
+
+// 일용근로소득 원천징수 — 사업소득 3.3%(자원봉사자)와 세목이 다르다.
+//   (일급 − 150,000) × 6% × (1 − 55% 근로소득세액공제) = (일급 − 150,000) × 2.7%
+//   + 지방소득세 10% → 총 2.97%. 15만원 공제는 1일당이라 근무일수와 무관하게 매일 적용된다.
+//   → 일급 15만원 이하면 과세표준이 0이라 원천징수도 0원.
+export const DAILY_WAGE_DEDUCTION = 150000
+export const DAILY_WAGE_TAX_RATE = 2.97
+
 // ── 특수 프로필 태그 — (zoneId|shift|localIdx) 키 ─────────
 // 14:20 시나리오를 의도적으로 심는다. §5 보고용 근거.
 const NOSHOW = new Set(['z-jumunjin|PM|0', 'z-jumunjin|PM|1', 'z-gyeongpo|PM|0']) // 오후조 미출근 3명 → 근무공백 2거점
@@ -103,7 +144,7 @@ const PM_BREAK = new Set(['z-food|PM|1']) // 오후 휴게 로테이션 중
 const PM_MOVING = new Set(['z-photo|PM|1']) // 거점 간 이동 중
 const AM_MISSED = new Set(['z-info|AM|3']) // 오전조 13:00 정시체크 누락(이력)
 
-const key = (zoneId: string, shift: 'AM' | 'PM', idx: number) => `${zoneId}|${shift}|${idx}`
+const key = (zoneId: string, shift: 'AM' | 'PM', idx: number | 'mgr') => `${zoneId}|${shift}|${idx}`
 
 // ── 배치 + 이벤트 생성 ──────────────────────────────────
 const assignments: StoredAssignment[] = []
@@ -136,19 +177,47 @@ function pushEvent(
 
 const zoneById = (id: string) => zones.find((z) => z.id === id)!
 
+// 근태 이벤트 생성 — 봉사자·거점관리자가 공유(둘 다 2교대 거점 근무).
+// k(특수 프로필 키)로 누락·이상치 시나리오를 심는다. 관리자는 'mgr' 키라 태그에 걸리지 않는다.
+function seedDutyEvents(a: StoredAssignment, z: Zone, g: number, k: string) {
+  const isGps = z.checkMode === 'self_gps'
+  const method: CheckMethod = isGps ? 'gps' : 'scan'
+  const gps = isGps ? nearby(z.coords, g) : undefined
+
+  if (a.shift === 'AM') {
+    // 오전조: 출근(09:50~09:58, 첫 슬롯 前) → 정시 10·11·12·13 → 퇴근(13:58~14:06)
+    pushEvent(a, 'checkin', H(9, 50) + (g % 9), { method, gps: gps && nearby(z.coords, g + 1) })
+    for (const slot of AM_SLOTS) {
+      if (AM_MISSED.has(k) && slot === H(13)) continue // 13:00 누락(이력)
+      pushEvent(a, 'hourly', slot + (g % 4), { slot, method, gps: gps && nearby(z.coords, g + slot) })
+    }
+    pushEvent(a, 'checkout', H(13, 58) + (g % 8), { method })
+  } else {
+    // 오후조: 출근(13:52~14:00, 첫 슬롯 前) → 정시 14:00(누락 태그면 생략). 15·16·17시는 미래 슬롯.
+    const anomaly =
+      k === 'z-market|PM|1' ? `지오펜스 경계(${z.geofenceRadius}m) 근접 — 이상치 기록(차단 아님)` : undefined
+    pushEvent(a, 'checkin', H(13, 52) + (g % 9), { method, gps: gps && nearby(z.coords, g + 2), anomaly })
+    if (!PM_MISSED.has(k)) {
+      pushEvent(a, 'hourly', H(14) + (g % 5), { slot: H(14), method, gps: gps && nearby(z.coords, g + 14) })
+    }
+  }
+}
+
+// ── ① 자원봉사자 110명 (gid 1~110) ──────────────────────
+// 거점 정원(quota)은 '자원봉사자 정원'이다 — RFP 3-1 의 110명은 자원봉사자 수(SPEC §32·§125).
+// 거점관리자는 이 정원 밖의 운영인력이므로 아래 ②에서 따로 얹는다.
 for (const z of zones) {
   for (const shift of ['AM', 'PM'] as const) {
     for (let idx = 0; idx < z.quota; idx++) {
       gid++
       const k = key(z.id, shift, idx)
-      const isManager = z.kind === 'venue' && idx === 0
-      const id = `as-${gid}`
       const a: StoredAssignment = {
-        id,
+        id: `as-${gid}`,
         personId: `p-${gid}`,
         personName: nameOf(gid),
         phone: phoneOf(gid),
-        role: isManager ? '거점관리자' : '봉사자',
+        kind: '자원봉사자',
+        role: '봉사자',
         lang: langOf(gid),
         isReserve: false,
         date: SEED_DATE,
@@ -160,8 +229,7 @@ for (const z of zones) {
         payout: payoutOf(gid, nameOf(gid)),
       }
 
-      const noShow = NOSHOW.has(k)
-      if (noShow) {
+      if (NOSHOW.has(k)) {
         a.noShow = true
         assignments.push(a)
         continue // 이벤트 없음
@@ -169,34 +237,63 @@ for (const z of zones) {
       if (PM_BREAK.has(k)) a.breaks = [{ startMin: H(14, 8), endMin: H(14, 40), note: '오후 휴게 로테이션' }]
       if (PM_MOVING.has(k)) a.moving = { startMin: H(14, 12), endMin: H(14, 32), note: '포토존 → 행사지원구역 지원' }
       assignments.push(a)
-
-      // ── 이벤트 생성 ──
-      const isGps = z.checkMode === 'self_gps'
-      const method = isGps ? 'gps' : 'scan'
-      const gps = isGps ? nearby(z.coords, gid) : undefined
-
-      if (shift === 'AM') {
-        // 오전조: 출근(09:50~09:58, 첫 슬롯 前) → 정시 10·11·12·13 → 퇴근(13:58~14:06)
-        const inMin = H(9, 50) + (gid % 9)
-        pushEvent(a, 'checkin', inMin, { method, gps: gps && nearby(z.coords, gid + 1) })
-        for (const slot of AM_SLOTS) {
-          if (AM_MISSED.has(k) && slot === H(13)) continue // 13:00 누락(이력)
-          pushEvent(a, 'hourly', slot + (gid % 4), { slot, method, gps: gps && nearby(z.coords, gid + slot) })
-        }
-        pushEvent(a, 'checkout', H(13, 58) + (gid % 8), { method })
-      } else {
-        // 오후조: 출근(13:52~14:00, 첫 슬롯 前) → 정시 14:00(누락 태그면 생략). 15·16·17시는 미래 슬롯.
-        const inMin = H(13, 52) + (gid % 9)
-        const anomaly =
-          k === 'z-market|PM|1' ? `지오펜스 경계(${z.geofenceRadius}m) 근접 — 이상치 기록(차단 아님)` : undefined
-        pushEvent(a, 'checkin', inMin, { method, gps: gps && nearby(z.coords, gid + 2), anomaly })
-        if (!PM_MISSED.has(k)) {
-          pushEvent(a, 'hourly', H(14) + (gid % 5), { slot: H(14), method, gps: gps && nearby(z.coords, gid + 14) })
-        }
-      }
+      seedDutyEvents(a, z, gid, k)
     }
   }
 }
+
+// ── ② 운영인력 · 거점관리자 10명 (gid 111~120) ───────────
+// 유인(venue) 거점마다 조별 1명. 자원봉사자가 아니라 스태프 — 직원일 수도 일용일 수도 있다.
+// 활동물품·정산서류·교육이수는 자원봉사자 항목이므로 부여하지 않는다.
+let mgrSeq = 0
+for (const z of zones.filter((z) => z.kind === 'venue')) {
+  for (const shift of ['AM', 'PM'] as const) {
+    gid++
+    mgrSeq++
+    const a: StoredAssignment = {
+      id: `as-${gid}`,
+      personId: `p-${gid}`,
+      personName: nameOf(gid),
+      phone: phoneOf(gid),
+      kind: '운영인력',
+      role: '거점관리자',
+      employment: MANAGER_EMPLOYEE_SEQ.has(mgrSeq) ? '직원' : '일용',
+      lang: langOf(gid),
+      isReserve: false,
+      date: SEED_DATE,
+      shift,
+      zoneId: z.id,
+      plannedInMin: shift === 'AM' ? H(10) : H(14),
+      absentDays: 0, // 관리자는 무결근(거점 공백 불가)
+    }
+    assignments.push(a)
+    seedDutyEvents(a, z, gid, key(z.id, shift, 'mgr'))
+  }
+}
+
+// ── ③ 운영인력 · 현장운영 12명 (gid 121~132) ─────────────
+// 운영본부 상주 — 거점 배치·정시체크 없음(교대가 아니라 1일 10시간 상주 근무).
+// shift 는 스키마 필수라 'AM'으로 두되, 근태는 plannedIn/OutMin 으로만 파생한다.
+STAFF_ROSTER.forEach((s, i) => {
+  gid++
+  assignments.push({
+    id: `as-${gid}`,
+    personId: `p-${gid}`,
+    personName: nameOf(gid),
+    phone: phoneOf(gid),
+    kind: '운영인력',
+    role: '현장운영',
+    employment: s.employment,
+    lang: langOf(gid),
+    isReserve: false,
+    date: SEED_DATE,
+    shift: 'AM',
+    zoneId: null,
+    plannedInMin: STAFF_IN_MIN,
+    plannedOutMin: STAFF_OUT_MIN,
+    absentDays: s.employment === '일용' && i % 5 === 0 ? 1 : 0, // 일용 일부 결근 → 정산 일할계산 근거
+  })
+})
 
 // ── 예비인력 pool(별도 유지 — 배치 안 된 상태, 110 에 미포함) ──
 // 대기 위치를 권역별로 분산 → 근무공백 발생 시 '거리' 산정이 실데이터가 됨.
@@ -213,6 +310,7 @@ for (let r = 0; r < RESERVE_COUNT; r++) {
     personId: `p-${gid}`,
     personName: nameOf(gid),
     phone: phoneOf(gid),
+    kind: '자원봉사자', // 예비도 자원봉사자 — 결원 발생 시 봉사자 자리를 메운다
     role: '봉사자',
     lang: r % 2 === 0 ? [LANGS[r % LANGS.length]] : undefined,
     isReserve: true,
@@ -230,8 +328,12 @@ export { assignments, events }
 
 // 교육 이수 시드 — personId 키. 배치가 아니라 '사람'에 귀속되므로 별도 테이블로 둔다.
 // (같은 사람이 여러 날 배치를 가져도 이수는 한 번만 기록된다.)
+// 사전 통합교육은 자원봉사자 대상 — 운영인력은 직영 스태프라 자체 교육 체계이므로 여기 없다.
 export const readiness: Record<string, EducationRecord[]> = Object.fromEntries(
-  assignments.map((a, i) => [a.personId, eduOf(i + 1)])
+  assignments
+    .map((a, i) => [a, i + 1] as const)
+    .filter(([a]) => a.kind === '자원봉사자')
+    .map(([a, n]) => [a.personId, eduOf(n)])
 )
 
 // ④ 이슈 ────────────────────────────────────────────────

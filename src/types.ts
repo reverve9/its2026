@@ -38,13 +38,26 @@ export interface Zone {
 }
 
 // ② 근무배치(assignments) ────────────────────────────────
-export type StaffRole = '봉사자' | '거점관리자' | '운영인력'
+// 인력은 2축으로 나뉜다. 이전 StaffRole 은 직무와 고용형태를 한 칸에 뒤섞어서
+// '거점관리자는 자원봉사자인가?'에 답할 수 없었다 — 그래서 축을 갈랐다.
+//
+//   구분(kind)       자원봉사자 | 운영인력          ← 크게 둘. 정산 방식·보고 경계가 여기서 갈린다
+//   직무(role)       봉사자 | 거점관리자 | 현장운영   ← 작게 셋
+//   고용형태(employment) 직원 | 일용                ← 운영인력만. 정산 총액을 가른다
+//
+// RFP 3-1 의 110명은 '자원봉사자' 수다(SPEC §32·§125). 거점관리자는 그 110 밖의
+// 운영인력이며 직원일 수도 일용일 수도 있다 → 실비 총액 11,880,000 은 영향받지 않는다.
+export type StaffKind = '자원봉사자' | '운영인력'
+export type StaffRole = '봉사자' | '거점관리자' | '현장운영'
+export type Employment = '직원' | '일용' // 직원 = 급여(정산 미산정) · 일용 = 시급×시간
 export interface Assignment {
   id: string
   personId: string // 사람 단위 식별자 — 교육 이수 등 '사람에 귀속되는' 사실의 키(배치 id와 별개)
   personName: string
   zoneId: string | null // 예비인력은 미배정(null)
+  kind: StaffKind
   role: StaffRole
+  employment?: Employment // 운영인력만 — 자원봉사자는 고용관계가 없으므로 undefined
   shift: Shift // 오전조/오후조
   date: string // YYYY-MM-DD — 5일치 구분(2026-10-19 ~ 2026-10-23)
   isReserve: boolean // 예비인력(결원·공백 대비)
@@ -87,7 +100,9 @@ export interface PersonnelRecord {
   education: EducationRecord[] // 이수 이력(사람 단위에서 끌어옴)
   personName: string
   phone: string
+  kind: StaffKind
   role: StaffRole
+  employment?: Employment
   shift: Shift
   zoneId: string | null
   isReserve: boolean

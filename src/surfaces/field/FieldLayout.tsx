@@ -21,7 +21,8 @@ export default function FieldLayout() {
     setSession(null)
   }
 
-  const isManager = session?.role === '거점관리자' || session?.role === '운영인력'
+  // 스캔·순회 화면은 거점관리자 몫. 현장운영(본부 상주)은 거점 배치가 없어 현장앱 대상이 아니다.
+  const isManager = session?.role === '거점관리자'
   const capture = useCapture()
 
   return (

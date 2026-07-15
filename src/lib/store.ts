@@ -3,7 +3,8 @@
 // 나중에 Supabase 로 교체 시 이 파일이 DB 클라이언트로 바뀌고, services 시그니처는 불변.
 
 import type {
-  Coords, CheckMethod, EducationKind, EducationRecord, FoodVendor, GoodsIssue, Issue, PayoutInfo, Zone,
+  Coords, CheckMethod, EducationKind, EducationRecord, Employment, FoodVendor, GoodsIssue, Issue,
+  PayoutInfo, StaffKind, StaffRole, Zone,
 } from '../types'
 import { emitChange } from './clock'
 import {
@@ -21,6 +22,10 @@ import {
   foodVendors as seedVendors,
   FOOD_PARASOLS,
   readiness as seedReadiness,
+  STAFF_HOURLY_WAGE,
+  STAFF_HOURS_PER_DAY,
+  DAILY_WAGE_DEDUCTION,
+  DAILY_WAGE_TAX_RATE,
 } from '../mock/data'
 
 // ── 저장 스키마(원시 사실) ──────────────────────────────
@@ -29,13 +34,16 @@ export interface StoredAssignment {
   personId: string // 사람 단위 키 — 교육 이수는 이 키에 귀속(배치 id 아님)
   personName: string
   phone: string
-  role: '봉사자' | '거점관리자' | '운영인력'
+  kind: StaffKind // 자원봉사자 | 운영인력 — 정산 방식·발주처 보고 경계가 여기서 갈린다
+  role: StaffRole // 봉사자 | 거점관리자 | 현장운영
+  employment?: Employment // 운영인력만 — 직원(급여·미산정) | 일용(시급×시간)
   lang?: string[]
   isReserve: boolean
   date: string
   shift: 'AM' | 'PM'
   zoneId: string | null
   plannedInMin: number // 예정 출근 시각(분)
+  plannedOutMin?: number // 예정 퇴근(분) — 현장운영(본부 상주)만. 봉사자·거점관리자는 조 창(WIN)에서 파생
   breaks?: { startMin: number; endMin: number; note?: string }[]
   moving?: { startMin: number; endMin: number; note?: string }
   noShow?: boolean // 미출근(이벤트 없음)
@@ -146,6 +154,23 @@ export function setWithholdingRate(pct: number): void {
   withholdingRate = Math.min(100, Math.max(0, pct))
   emitChange()
 }
+// 운영인력 일용 — 시급 × 1일 근무시간 = 일급. 둘 다 사용자 입력값(자원봉사자의 물품단가와 같은 취급).
+// 시급을 올려 일급이 15만원을 넘기면 일용근로소득 원천징수가 살아난다 → 화면에서 반응이 보인다.
+let staffHourlyWage = STAFF_HOURLY_WAGE
+export const staffWage = () => staffHourlyWage
+export function setStaffHourlyWage(won: number): void {
+  staffHourlyWage = Math.max(0, Math.round(won))
+  emitChange()
+}
+let staffHours = STAFF_HOURS_PER_DAY
+export const staffHoursPerDay = () => staffHours
+export function setStaffHoursPerDay(h: number): void {
+  staffHours = Math.min(24, Math.max(0, h))
+  emitChange()
+}
+export const dailyWageDeduction = () => DAILY_WAGE_DEDUCTION
+export const dailyWageTaxRate = () => DAILY_WAGE_TAX_RATE
+
 export const opsDate = () => SEED_DATE // 운영일(YYYY-MM-DD) — 물품 지급일 등 마스터 기록용
 export const rawVendors = (): StoredVendor[] => vendors
 export const foodParasols = () => FOOD_PARASOLS

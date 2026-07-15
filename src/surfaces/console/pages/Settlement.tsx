@@ -6,16 +6,26 @@ import {
 import { useLive } from '../../../lib/useLive'
 import type { Shift } from '../../../types'
 import { PageHeader, Section } from '../../../components/layout'
-import { listNo } from '../../../components/ui'
+import { listNo, usePageState, paginate, Pagination } from '../../../components/ui'
+import StaffSettlement from './StaffSettlement'
 
-// 자원봉사자 정산 — '이렇게 정산하겠다'는 **산정 방식** 제시 화면(지급 후 집행 실적이 아님).
-// RFP 3-1: 1인당(교대근무자별) 24,000원, 지급물품 대금 포함.
-//   → 물품은 총액에 더하는 게 아니라 총액에서 빼낸다: 일일 지급기준 = 24,000 − 세트단가/4.5
-//   → 현금(일당)에만 원천징수 적용(현물인 활동물품은 대상 아님)
-//   → 결근 시 실근무일 기준 일할 계산 = 산정 규칙이지 실적 집계가 아니다
-// 세트 단가·원천징수율은 확정값이 아니라 입력값 — 바꾸면 전 계산이 재전파된다.
+// 정산 산출내역 — '이렇게 정산하겠다'는 **산정 방식** 제시 화면(지급 후 집행 실적이 아님).
+//
+// 인력 구분에 따라 정산이 갈린다(구분 탭):
+//   자원봉사자 — RFP 3-1 실비 1인당 24,000원(지급물품 대금 포함). **발주처 보고 대상.**
+//     → 물품은 총액에 더하는 게 아니라 총액에서 빼낸다: 일일 지급기준 = 24,000 − 세트단가/4.5
+//     → 현금(일당)에만 원천징수 적용(현물인 활동물품은 대상 아님)
+//     → 결근 시 실근무일 기준 일할 계산 = 산정 규칙이지 실적 집계가 아니다
+//   운영인력 — 실비가 아니라 고용 대가(직원=급여 · 일용=시급). 내부 원가라 보고 대상이 아니다.
+//
+// 세트 단가·원천징수율·시급은 확정값이 아니라 입력값 — 바꾸면 전 계산이 재전파된다.
 
 const won = (n: number) => n.toLocaleString('ko-KR')
+const kinds = [
+  { key: 'volunteer', label: '자원봉사자' },
+  { key: 'staff', label: '운영인력' },
+] as const
+type KindKey = (typeof kinds)[number]['key']
 const tabs = [
   { key: 'summary', label: '산정 기준' },
   { key: 'detail', label: '개인별 산출' },
@@ -34,10 +44,13 @@ function Tile({ label, value, sub, tone = 'default' }: { label: string; value: s
 }
 
 export default function Settlement() {
+  const [kind, setKind] = useState<KindKey>('volunteer')
   const [tab, setTab] = useState<TabKey>('summary')
   const [shift, setShift] = useState<Shift | 'all'>('all')
   const [absentOnly, setAbsentOnly] = useState(false)
   const [q, setQ] = useState('')
+  // 훅은 조기 반환(`if (!ex || !rows)`) 앞에서 — 필터·탭이 바뀌면 1페이지로.
+  const pg = usePageState(`${tab}|${q}|${shift}|${absentOnly}`)
 
   const ex = useLive(getExpenses)
   const rows = useLive(getSettlementRows)
@@ -52,21 +65,38 @@ export default function Settlement() {
       (!absentOnly || r.absentDays > 0) &&
       (!qq || [r.personName, r.zoneName].some((v) => v.toLowerCase().includes(qq)))
   )
+  // 표 본문만 자른다 — 하단 소계는 페이지가 아니라 필터 전체 기준이어야 한다.
+  const page = paginate(detailRows, pg.page)
 
   return (
     <div>
       <PageHeader
-        title="자원봉사자 정산"
-        summary="1인당(교대근무자별) 24,000원 · 지급물품 대금 포함"
-        right={
-          <button
-            onClick={() => window.print()}
-            className="rounded-lg border border-line bg-surface px-3 py-1.5 text-label font-semibold text-ink-base shadow-sm transition hover:text-ink-strong"
-          >
-            산출내역 출력
-          </button>
+        title="정산 산출내역"
+        summary={
+          kind === 'volunteer'
+            ? '자원봉사자 1인당(교대근무자별) 24,000원 · 지급물품 대금 포함 — 발주처 보고 대상'
+            : '운영인력 — 직원(급여)·일용(시급) · 실비가 아닌 내부 원가'
         }
       />
+
+      {/* 구분 — 정산 방식도 보고 경계도 다르므로 화면의 1차 축이다. */}
+      <div className="mb-4 flex gap-1 rounded-full bg-neutral-100 p-0.5 w-fit">
+        {kinds.map((k) => (
+          <button
+            key={k.key}
+            onClick={() => setKind(k.key)}
+            className={`rounded-full px-4 py-1.5 text-label font-semibold transition ${
+              kind === k.key ? 'bg-primary-600 text-white' : 'text-ink-muted hover:text-ink-strong'
+            }`}
+          >
+            {k.label}
+          </button>
+        ))}
+      </div>
+
+      {kind === 'staff' && <StaffSettlement />}
+      {kind === 'volunteer' && (
+       <>
 
       {/* 산정 기준 — 물품 세트 단가가 입력값. 여기서 전부 파생된다. */}
       <div className="mb-4">
@@ -263,6 +293,17 @@ export default function Settlement() {
 
       {/* 개인별 내역 — 계획일수 ≠ 실근무일수(결근 반영) */}
       {tab === 'detail' && (
+       <>
+        <div className="mb-2 flex justify-end">
+          <Pagination
+            page={page.page}
+            pages={page.pages}
+            start={page.start}
+            shown={page.slice.length}
+            total={page.total}
+            onChange={pg.setPage}
+          />
+        </div>
         <div className="card overflow-hidden">
           <table className="w-full text-label">
             <thead>
@@ -282,9 +323,9 @@ export default function Settlement() {
               </tr>
             </thead>
             <tbody>
-              {detailRows.map((r, i) => (
+              {page.slice.map((r, i) => (
                 <tr key={r.id} className="border-b border-line-soft last:border-0 hover:bg-primary-50/50">
-                  <td className="tnum px-3 py-2.5 text-right text-ink-faint">{listNo(i)}</td>
+                  <td className="tnum px-3 py-2.5 text-right text-ink-faint">{listNo(page.start + i)}</td>
                   <td className="px-3 py-2.5 font-semibold text-ink-strong">{r.personName}</td>
                   <td className="px-3 py-2.5">
                     <span className={`rounded-md px-1.5 py-0.5 text-caption font-semibold ${r.shift === 'AM' ? 'bg-info-soft text-info' : 'bg-primary-50 text-primary-700'}`}>
@@ -337,6 +378,9 @@ export default function Settlement() {
             계획일 = 오전조 5일 · 오후조 4일 · 결근 {absentDaysTotal}일 반영. 일당은 실근무일 기준 일할 계산.
           </p>
         </div>
+       </>
+      )}
+       </>
       )}
     </div>
   )

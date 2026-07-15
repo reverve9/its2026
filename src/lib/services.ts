@@ -17,6 +17,12 @@ import {
   setGoodsUnitCost,
   withholding,
   setWithholdingRate,
+  staffWage,
+  setStaffHourlyWage,
+  staffHoursPerDay,
+  setStaffHoursPerDay,
+  dailyWageDeduction,
+  dailyWageTaxRate,
   opsDate,
   findAssignment,
   zoneOf,
@@ -66,6 +72,8 @@ import type {
   EducationKind,
   EducationRecord,
   EducationSummary,
+  StaffRole,
+  Employment,
 } from '../types'
 
 // ── 조 상수 ─────────────────────────────────────────────
@@ -98,9 +106,25 @@ function derive(a: StoredAssignment, now: number): Assignment {
   // 예비인력(미배정) — 대기 상태, 정시체크 없음.
   if (a.isReserve && !a.zoneId) {
     return {
-      id: a.id, personId: a.personId, personName: a.personName, zoneId: null, role: a.role, shift: a.shift,
+      id: a.id, personId: a.personId, personName: a.personName, zoneId: null,
+      kind: a.kind, role: a.role, employment: a.employment, shift: a.shift,
       date: a.date, isReserve: true, status: 'before', lang: a.lang, phone: a.phone, checks: [],
       standby: a.standby, goods: a.goods,
+    }
+  }
+
+  // 운영인력·현장운영 — 운영본부 상주. 거점 배치도 정시체크도 없고 2교대에 속하지 않는다.
+  // 근태는 예정 출퇴근(10시간 상주)으로만 파생한다.
+  if (a.role === '현장운영' && a.plannedOutMin !== undefined) {
+    const status: DutyStatus =
+      now < a.plannedInMin ? 'before' : now >= a.plannedOutMin ? 'off' : 'on'
+    return {
+      id: a.id, personId: a.personId, personName: a.personName, zoneId: null,
+      kind: a.kind, role: a.role, employment: a.employment, shift: a.shift,
+      date: a.date, isReserve: false, status, lang: a.lang, phone: a.phone, checks: [],
+      checkedInAt: now >= a.plannedInMin ? fmtHM(a.plannedInMin) : undefined,
+      checkedOutAt: now >= a.plannedOutMin ? fmtHM(a.plannedOutMin) : undefined,
+      goods: a.goods,
     }
   }
 
@@ -130,7 +154,8 @@ function derive(a: StoredAssignment, now: number): Assignment {
   }
 
   return {
-    id: a.id, personId: a.personId, personName: a.personName, zoneId: a.zoneId, role: a.role, shift: a.shift,
+    id: a.id, personId: a.personId, personName: a.personName, zoneId: a.zoneId,
+    kind: a.kind, role: a.role, employment: a.employment, shift: a.shift,
     date: a.date, isReserve: a.isReserve, status, lang: a.lang, phone: a.phone,
     checkedInAt: checkedIn ? fmtHM(checkinEv!.timeMin) : undefined,
     checkedOutAt: checkedOut ? fmtHM(checkoutEv!.timeMin) : undefined,
@@ -143,9 +168,13 @@ const roster = (now: number): Assignment[] => rawAssignments().map((a) => derive
 const isPresent = (s: DutyStatus) => s === 'on' || s === 'break' || s === 'moving'
 
 // 거점 present/status 파생.
+// quota 는 '자원봉사자 정원'이므로 present 도 자원봉사자만 센다 — 거점관리자(운영인력)를 같이 세면
+// present 가 quota 를 넘겨 충원 게이지가 9/8 로 깨지고 근무공백(quota−present) 산정도 틀어진다.
 function deriveZone(z: Zone, list: Assignment[], now: number): Zone {
   const shift = activeShiftAt(now)
-  const present = list.filter((a) => a.zoneId === z.id && a.shift === shift && isPresent(a.status)).length
+  const present = list.filter(
+    (a) => a.zoneId === z.id && a.shift === shift && a.kind === '자원봉사자' && isPresent(a.status)
+  ).length
   const start = hm(z.opWindow.start), end = hm(z.opWindow.end)
   const status: Zone['status'] = now < start ? 'before' : now >= end ? 'closed' : 'open'
   return { ...z, present, status }
@@ -400,10 +429,11 @@ export interface SettlementRow {
 
 export const plannedDaysOf = (shift: Shift): number => (shift === 'AM' ? 5 : 4)
 
+// 자원봉사자 실비만 — 운영인력은 실비 대상이 아니다(직원=급여 · 일용=시급). getStaffSettlement 참조.
 export async function getSettlementRows(): Promise<SettlementRow[]> {
   const { dailyPayout, goodsUnitCost, withholdingRate } = await computeExpenses()
   return rawAssignments()
-    .filter((a) => !a.isReserve)
+    .filter((a) => !a.isReserve && a.kind === '자원봉사자')
     .map((a) => {
       const plannedDays = plannedDaysOf(a.shift)
       const absentDays = Math.min(a.absentDays ?? 0, plannedDays)
@@ -428,6 +458,106 @@ export async function getSettlementRows(): Promise<SettlementRow[]> {
         accountNo: pay.accountNo,
       }
     })
+}
+
+// ── 운영인력 정산 ───────────────────────────────────────
+// 자원봉사자 실비와 세목·보고 경계가 다르다.
+//   직원 — 급여이므로 이 산정에 들어오지 않는다(0원 표기).
+//   일용 — 일급(시급 × 1일 근무시간) × 근무일수 − 일용근로소득 원천징수.
+// 발주처 보고 대상이 아니다(실비 정산이 아니라 내부 원가) → 산출내역서에는 자원봉사자만 오른다.
+export interface StaffSettlementRow {
+  id: string
+  personName: string
+  role: StaffRole
+  employment: Employment
+  zoneName: string
+  plannedDays: number
+  absentDays: number
+  workedDays: number
+  dailyWage: number // 일급 = 시급 × 근무시간 (직원은 0 — 급여라 미산정)
+  gross: number // 일급 × 실근무일
+  withholding: number // 일용근로소득 원천징수
+  net: number
+}
+
+// 일용근로소득 원천징수 — (일급 − 150,000) × 2.97%. 15만원 공제는 1일당이라 근무일수와 무관하게
+// 매일 적용된다 → 일급 15만원 이하면 며칠을 일하든 0원. 음수 방지로 하한 0.
+export function dailyWageWithholding(dailyWage: number, workedDays: number): number {
+  const taxablePerDay = Math.max(0, dailyWage - dailyWageDeduction())
+  return Math.round(taxablePerDay * (dailyWageTaxRate() / 100)) * workedDays
+}
+
+export interface StaffSettlementSummary {
+  hourlyWage: number
+  hoursPerDay: number
+  dailyWage: number
+  headcount: number
+  employeeCount: number
+  daylaborCount: number
+  daylaborGross: number
+  daylaborWithholding: number
+  daylaborNet: number
+  deduction: number
+  taxRate: number
+  rows: StaffSettlementRow[]
+}
+
+// 운영인력은 행사 5일 전일 근무(자원봉사자처럼 교대로 나뉘지 않는다).
+const STAFF_PLANNED_DAYS = 5
+
+export async function getStaffSettlement(): Promise<StaffSettlementSummary> {
+  const hourlyWage = staffWage()
+  const hoursPerDay = staffHoursPerDay()
+  const dailyWage = hourlyWage * hoursPerDay
+
+  const rows: StaffSettlementRow[] = rawAssignments()
+    .filter((a) => a.kind === '운영인력')
+    .map((a) => {
+      const employment = a.employment ?? '일용'
+      const absentDays = Math.min(a.absentDays ?? 0, STAFF_PLANNED_DAYS)
+      const workedDays = STAFF_PLANNED_DAYS - absentDays
+      // 직원은 급여 — 이 산정에서 0원. '정산하지 않는다'는 사실을 행으로 보여준다.
+      const perDay = employment === '직원' ? 0 : dailyWage
+      const gross = perDay * workedDays
+      const wh = employment === '직원' ? 0 : dailyWageWithholding(dailyWage, workedDays)
+      return {
+        id: a.id,
+        personName: a.personName,
+        role: a.role,
+        employment,
+        zoneName: a.zoneId ? zoneOf(a.zoneId)?.name ?? '—' : '운영본부',
+        plannedDays: STAFF_PLANNED_DAYS,
+        absentDays,
+        workedDays,
+        dailyWage: perDay,
+        gross,
+        withholding: wh,
+        net: gross - wh,
+      }
+    })
+
+  const day = rows.filter((r) => r.employment === '일용')
+  return {
+    hourlyWage,
+    hoursPerDay,
+    dailyWage,
+    headcount: rows.length,
+    employeeCount: rows.length - day.length,
+    daylaborCount: day.length,
+    daylaborGross: day.reduce((s, r) => s + r.gross, 0),
+    daylaborWithholding: day.reduce((s, r) => s + r.withholding, 0),
+    daylaborNet: day.reduce((s, r) => s + r.net, 0),
+    deduction: dailyWageDeduction(),
+    taxRate: dailyWageTaxRate(),
+    rows,
+  }
+}
+
+export async function setStaffWage(won: number): Promise<void> {
+  setStaffHourlyWage(won)
+}
+export async function setStaffHours(h: number): Promise<void> {
+  setStaffHoursPerDay(h)
 }
 
 // 경보 — 근무공백(critical) + 정시체크 누락(warning) + 교대 안내(info).
@@ -464,10 +594,12 @@ export async function getAlerts(): Promise<OpsAlert[]> {
 }
 
 // KPI — 교대 인지형.
+// 모수는 자원봉사자(110)다. 운영인력은 2교대 배치 대상이 아니라 관제 주체이므로
+// '배치 110 · 오전 55 · 오후 55'에 섞이면 RFP 기준 숫자가 흔들린다.
 export async function getKpi(): Promise<KpiSummary> {
   const now = getNowMin()
   const shift = activeShiftAt(now)
-  const list = roster(now)
+  const list = roster(now).filter((a) => a.kind === '자원봉사자')
   const nonReserve = list.filter((a) => !a.isReserve)
   const cur = nonReserve.filter((a) => a.shift === shift)
   const gaps = await computeStaffingGaps()
@@ -548,7 +680,9 @@ const toPersonnel = (a: StoredAssignment): PersonnelRecord => ({
   education: educationOf(a.personId),
   personName: a.personName,
   phone: a.phone,
+  kind: a.kind,
   role: a.role,
+  employment: a.employment,
   shift: a.shift,
   zoneId: a.zoneId,
   isReserve: a.isReserve,
@@ -566,8 +700,10 @@ export async function getPersonnelRecord(id: string): Promise<PersonnelRecord | 
   return a ? toPersonnel(a) : undefined
 }
 
+// 활동물품·정산서류는 자원봉사자 항목이다(본공고 3-1 제작·배부 + 실비 지급용).
+// 운영인력은 지급 대상도 실비 대상도 아니므로 모수에서 뺀다 — 넣으면 지급률·서류 등록률이 왜곡된다.
 export async function getGoodsSummary(): Promise<GoodsSummary> {
-  const all = rawAssignments()
+  const all = rawAssignments().filter((a) => a.kind === '자원봉사자')
   const list = all.map((a) => a.goods ?? GOODS_NONE)
   const pay = all.map((a) => a.payout ?? PAYOUT_NONE)
   return {
@@ -594,8 +730,9 @@ export async function getEducation(personId: string): Promise<EducationRecord[]>
   return educationOf(personId)
 }
 
+// 사전 통합교육은 자원봉사자 대상(운영인력은 자체 교육) → 이수율 모수 = 배치 봉사자 110.
 export async function getEducationSummary(): Promise<EducationSummary> {
-  const list = rawAssignments().filter((a) => !a.isReserve)
+  const list = rawAssignments().filter((a) => !a.isReserve && a.kind === '자원봉사자')
   const done = list.filter((a) => hasEducation(educationOf(a.personId), '사전 통합교육')).length
   return {
     total: list.length,
