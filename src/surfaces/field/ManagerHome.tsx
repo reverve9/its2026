@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from 'react'
 import { getAssignment, getZone, getZones, getAssignments, getActiveShift, reportIssue, checkIn, getPatrolCandidates, recordPatrolAudit, shiftLabel } from '../../lib/services'
 import { useLive, useNowMin } from '../../lib/useLive'
+import { NoticeCard } from './NoticeCard'
 import { getNowMin, fmtHM } from '../../lib/clock'
 import { StatusBadge, Fill } from '../../components/ui'
 import type { FieldSession } from '../../lib/session'
@@ -131,6 +132,9 @@ export default function ManagerHome({ session, onLogout }: { session: FieldSessi
             </div>
           </div>
         </div>
+
+        {/* 본부 공지 — 거점 현황과 같이 '상황 파악' 묶음. 아래 액션(순회·스캔)을 지시가 바꿀 수 있어 위에 둔다. */}
+        <NoticeCard assignmentId={me.id} />
 
         {/* 내 거점 인력 */}
         <div className="card p-4">

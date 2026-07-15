@@ -309,8 +309,17 @@ export async function getIssues(): Promise<Issue[]> {
 export async function updateIssueStatus(id: string, status: IssueStatus): Promise<void> {
   setIssueStatus(id, status)
 }
+// 공지는 '발령된 것'만 존재한다(R5·R6) — 시각 파생을 여기서 건다.
+// 이게 없으면 스크러버를 10:00 으로 돌려도 14:05 공지가 보인다. 상황전파는 시간이 곧 의미라
+// (14:05 에 내린 지시가 10:00 화면에 있으면 안 된다) 콘솔·현장앱 공통으로 건다.
+// 정렬은 최신순 — 시드 입력 순서가 아니라 발령 시각이 기준이다.
+const issuedNotices = (now: number): Notice[] =>
+  rawNotices()
+    .filter((n) => hm(n.time) <= now)
+    .sort((a, b) => hm(b.time) - hm(a.time))
+
 export async function getNotices(): Promise<Notice[]> {
-  return rawNotices()
+  return issuedNotices(getNowMin())
 }
 
 // 지금 어느 조가 돌고 있는가(R5·R6) — 전일 상주라 자기 조가 없는 거점관리자가
@@ -333,10 +342,11 @@ export function matchesAudience(
 }
 
 // 특정 배치(=사람)가 받아야 할 공지 — 현장앱 수신함.
+// 주소(audience)로 한 번, 발령 시각으로 한 번 거른다.
 export async function getNoticesFor(assignmentId: string): Promise<Notice[]> {
   const a = rawAssignments().find((x) => x.id === assignmentId)
   if (!a) return []
-  return rawNotices().filter((n) => matchesAudience(a, n.audience))
+  return issuedNotices(getNowMin()).filter((n) => matchesAudience(a, n.audience))
 }
 
 // 수신자 주소를 사람이 읽는 한 줄로 — 콘솔 배지·현장앱 표기 공유.

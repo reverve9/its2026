@@ -146,6 +146,9 @@ export default function Dashboard() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <div className="mb-2 text-label font-semibold text-ink-muted">최근 공지 · 안내기준</div>
+              {notices.length === 0 && (
+                <p className="py-2 text-label text-ink-muted">아직 발령된 공지가 없습니다.</p>
+              )}
               <div className="divide-y divide-line-soft">
                 {notices.map((n) => (
                   <div key={n.id} className="py-2">

@@ -5,6 +5,7 @@ import { getNowMin, fmtHM } from '../../lib/clock'
 import { checkGeofence } from '../../lib/geo'
 import { toMin, fmtDur } from '../../lib/time'
 import { StatusBadge } from '../../components/ui'
+import { NoticeCard } from './NoticeCard'
 import { QrCode } from '../../components/QrCode'
 import { EMERGENCY_CONTACTS, SHUTTLE_INFO } from '../../lib/info'
 import { getEducation, educationRecord } from '../../lib/services'
@@ -199,6 +200,9 @@ export default function VolunteerHome({ session, onLogout }: { session: FieldSes
             </button>
           </div>
         )}
+
+        {/* 본부 공지 — 체크인 액션 아래, 참고정보 위. 지시는 안내보다 먼저 읽어야 한다. */}
+        <NoticeCard assignmentId={a.id} />
 
         {/* 거점 안내 */}
         <div className="card p-4">
