@@ -65,9 +65,12 @@ const payoutOf = (i: number, name: string): PayoutInfo => {
 // 사전 통합교육: 대부분 이수(미이수 소수 = 일괄 인증·미이수 드릴다운이 화면에서 의미 있게).
 // 현장교육: 일부만 이수 → 개인 상세 이력 섹션이 교육구분별로 변화 있게 보인다.
 const CERTIFIERS = ['운영본부 총괄', '자원봉사 담당', '거점 총괄']
+// i=111~117 은 예비인력 구간. 예비 중 1명(p-113)을 미이수로 둬야 근무공백 대응의
+// '미이수 soft 경고 + 이수자 우선 정렬'이 화면에서 실제로 보인다(전원 이수면 캡쳐 불가).
+// 이수율 KPI 는 배치 인력만 세므로 이 예외는 92% 수치에 영향 없다.
 const eduOf = (i: number): EducationRecord[] => {
   const recs: EducationRecord[] = []
-  if (i % 13 !== 5) // 미이수 소수(≈8%) — 나머지는 사전 통합교육 이수
+  if (i % 13 !== 5 && i !== 113) // 미이수 소수(≈8%) — 나머지는 사전 통합교육 이수
     recs.push({
       kind: '사전 통합교육',
       certifiedBy: CERTIFIERS[i % CERTIFIERS.length],
