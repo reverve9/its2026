@@ -89,7 +89,8 @@ export default function Identify({ onLogin }: { onLogin: (s: FieldSession) => vo
                 >
                   <span className="font-semibold text-ink-strong">{s.name}</span>
                   <span className={`rounded px-1.5 py-0.5 font-semibold ${s.role === '거점관리자' ? 'bg-primary-50 text-primary-700' : 'bg-info-soft text-info'}`}>{s.role}</span>
-                  <span className="text-ink-muted">{s.shift === 'AM' ? '오전' : '오후'} · {s.zoneName}</span>
+                  {/* 거점관리자는 전일 상주라 조가 없다 — shift 는 스키마 채움값이므로 표시하지 않는다. */}
+                  <span className="text-ink-muted">{s.role === '거점관리자' ? '전일' : s.shift === 'AM' ? '오전' : '오후'} · {s.zoneName}</span>
                   <span className="tnum ml-auto text-ink-faint">{s.phone}</span>
                 </button>
               ))}

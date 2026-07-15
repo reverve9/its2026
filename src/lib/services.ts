@@ -117,11 +117,14 @@ function derive(a: StoredAssignment, now: number): Assignment {
 
   // 운영인력·현장운영 — 운영본부 상주. 거점 배치도 정시체크도 없고 2교대에 속하지 않는다.
   // 근태는 예정 출퇴근(10시간 상주)으로만 파생한다.
-  if (a.role === '현장운영' && a.plannedOutMin !== undefined) {
+  // 운영인력(거점관리자·현장운영)은 교대가 아니라 1일 10시간 상주 — 조 슬롯이 아니라
+  // plannedIn/OutMin 으로만 근태를 파생하고, 정시체크(checks)는 자원봉사자 관제 항목이라 비운다.
+  // 거점관리자는 거점에 상주하므로 zoneId 를 유지한다(현장운영은 애초에 null).
+  if (a.kind === '운영인력' && a.plannedOutMin !== undefined) {
     const status: DutyStatus =
       now < a.plannedInMin ? 'before' : now >= a.plannedOutMin ? 'off' : 'on'
     return {
-      id: a.id, personId: a.personId, personName: a.personName, zoneId: null,
+      id: a.id, personId: a.personId, personName: a.personName, zoneId: a.zoneId,
       kind: a.kind, role: a.role, employment: a.employment, shift: a.shift,
       date: a.date, isReserve: false, status, lang: a.lang, phone: a.phone, checks: [],
       checkedInAt: now >= a.plannedInMin ? fmtHM(a.plannedInMin) : undefined,
@@ -246,7 +249,7 @@ export interface SampleLogin {
 export async function getSampleLogins(): Promise<SampleLogin[]> {
   const pick = (pred: (a: StoredAssignment) => boolean) => rawAssignments().find(pred)
   const raws = [
-    pick((a) => a.role === '거점관리자' && a.shift === 'PM'), // 유인 거점관리자
+    pick((a) => a.role === '거점관리자'), // 거점관리자 — 전일 상주라 조로 고르지 않는다
     pick((a) => !a.isReserve && a.shift === 'PM' && zoneOf(a.zoneId)?.kind === 'tourist'), // 무인 봉사자
     pick((a) => !a.isReserve && a.shift === 'PM' && zoneOf(a.zoneId)?.kind === 'venue' && a.role === '봉사자'),
     pick((a) => a.shift === 'AM' && a.role === '봉사자'), // 오전조(퇴근 상태 확인용)
@@ -308,6 +311,12 @@ export async function updateIssueStatus(id: string, status: IssueStatus): Promis
 }
 export async function getNotices(): Promise<Notice[]> {
   return rawNotices()
+}
+
+// 지금 어느 조가 돌고 있는가(R5·R6) — 전일 상주라 자기 조가 없는 거점관리자가
+// '지금 내 거점의 인력'을 보려면 자기 shift 가 아니라 이걸 기준으로 삼아야 한다.
+export async function getActiveShift(): Promise<Shift> {
+  return activeShiftAt(getNowMin())
 }
 
 // ── 상황전파 수신자 판정(R5) ─────────────────────────────
@@ -847,10 +856,17 @@ export async function registerVendorDoc(vendorId: string, docId: string, done: b
 
 // 순회 랜덤감사 — 무인(관광지) 거점 셀프체크 무결성의 3번째 층(핸드오프 §3).
 // 대상 후보 = 현재 근무 중인 무인 거점 인력.
+// 순회 감사 대상 = 셀프체크(GPS) 거점의 자원봉사자. 검증하려는 건 '셀프체크 무결성'이므로
+// 셀프체크를 하지 않는 운영인력은 대상이 아니다 — kind 를 안 가리면 관광 거점에 상주하는
+// 거점관리자가 자기들끼리 감사 대상으로 잡힌다(전 거점 관리자 배치 이후 발생).
 export async function getPatrolCandidates(): Promise<Assignment[]> {
   const now = getNowMin()
   return roster(now).filter(
-    (a) => !a.isReserve && isPresent(a.status) && zoneOf(a.zoneId)?.checkMode === 'self_gps'
+    (a) =>
+      !a.isReserve &&
+      a.kind === '자원봉사자' &&
+      isPresent(a.status) &&
+      zoneOf(a.zoneId)?.checkMode === 'self_gps'
   )
 }
 

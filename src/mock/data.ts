@@ -102,11 +102,13 @@ const nearby = (c: Coords, i: number): Coords => ({
 // 자원봉사자 110명과 별개. 실비(24,000) 대상이 아니며 발주처 보고 대상도 아니다 —
 // 직원은 급여라 정산에서 미산정, 일용만 시급 기준으로 산정한다.
 //
-// 거점관리자 10명 중 직원 2명(관리자 순번 1·2 = 종합안내소 오전·오후).
-// 나머지 8명은 일용 — 유인 거점 스캔·순회는 일용으로 충당하는 현실 구성.
+// 거점관리자 11명 중 직원 2명(관리자 순번 1·2 = 종합안내소·공연구역).
+// 나머지 9명은 일용 — 유인 거점 스캔·순회는 일용으로 충당하는 현실 구성.
 const MANAGER_EMPLOYEE_SEQ = new Set([1, 2])
 
-// 현장운영 12명 — 운영본부 상주. 직원 4(책임 직무) + 일용 8(교대 현장직).
+// 현장운영 11명 — 운영본부 상주. 직원 4(책임 직무) + 일용 7.
+// '거점 순회'를 3 → 2로 줄이고 1명을 거점관리자로 돌렸다(아래 ② 참조) — 순회 감사는
+// SPEC §33 이 거점관리자 업무로 규정해 중복이었고, 거점에 상주시키는 편이 그 규정에 맞다.
 const STAFF_ROSTER: { duty: string; employment: Employment }[] = [
   { duty: '운영 총괄', employment: '직원' },
   { duty: '안전 관리', employment: '직원' },
@@ -114,7 +116,6 @@ const STAFF_ROSTER: { duty: string; employment: Employment }[] = [
   { duty: '민원 대응', employment: '직원' },
   { duty: '물품 관리', employment: '일용' },
   { duty: '물품 관리', employment: '일용' },
-  { duty: '거점 순회', employment: '일용' },
   { duty: '거점 순회', employment: '일용' },
   { duty: '거점 순회', employment: '일용' },
   { duty: '본부 지원', employment: '일용' },
@@ -242,33 +243,37 @@ for (const z of zones) {
   }
 }
 
-// ── ② 운영인력 · 거점관리자 10명 (gid 111~120) ───────────
-// 유인(venue) 거점마다 조별 1명. 자원봉사자가 아니라 스태프 — 직원일 수도 일용일 수도 있다.
+// ── ② 운영인력 · 거점관리자 11명 (gid 111~121) ───────────
+// 거점 11개 × 1명 — 전 거점에 관리자를 둔다. 이전 시드는 유인(venue) 5개 거점에만
+// 조별 1명씩(=10명) 두어 관광(tourist) 6개 거점의 자원봉사자 50명이 무관리 상태였다.
+//
+// 관리자는 교대하지 않는다. 자원봉사자는 실비 대상 4시간 교대지만 관리자는 직영 운영인력이라
+// 1일 10시간 상주하며 오전조·오후조를 모두 관장한다. 정산은 이미 이 전제로 지급 중이었고
+// (getStaffSettlement: 운영인력 = 시급 × 10h × 5일, 교대 무관) 시드만 교대에 묶여 어긋나 있었다.
+// → shift 는 스키마 필수라 'AM'을 넣되 의미 없다. 근태는 plannedIn/OutMin 으로만 파생한다(현장운영과 동일).
+//
 // 활동물품·정산서류·교육이수는 자원봉사자 항목이므로 부여하지 않는다.
 let mgrSeq = 0
-for (const z of zones.filter((z) => z.kind === 'venue')) {
-  for (const shift of ['AM', 'PM'] as const) {
-    gid++
-    mgrSeq++
-    const a: StoredAssignment = {
-      id: `as-${gid}`,
-      personId: `p-${gid}`,
-      personName: nameOf(gid),
-      phone: phoneOf(gid),
-      kind: '운영인력',
-      role: '거점관리자',
-      employment: MANAGER_EMPLOYEE_SEQ.has(mgrSeq) ? '직원' : '일용',
-      lang: langOf(gid),
-      isReserve: false,
-      date: SEED_DATE,
-      shift,
-      zoneId: z.id,
-      plannedInMin: shift === 'AM' ? H(10) : H(14),
-      absentDays: 0, // 관리자는 무결근(거점 공백 불가)
-    }
-    assignments.push(a)
-    seedDutyEvents(a, z, gid, key(z.id, shift, 'mgr'))
-  }
+for (const z of zones) {
+  gid++
+  mgrSeq++
+  assignments.push({
+    id: `as-${gid}`,
+    personId: `p-${gid}`,
+    personName: nameOf(gid),
+    phone: phoneOf(gid),
+    kind: '운영인력',
+    role: '거점관리자',
+    employment: MANAGER_EMPLOYEE_SEQ.has(mgrSeq) ? '직원' : '일용',
+    lang: langOf(gid),
+    isReserve: false,
+    date: SEED_DATE,
+    shift: 'AM',
+    zoneId: z.id,
+    plannedInMin: STAFF_IN_MIN,
+    plannedOutMin: STAFF_OUT_MIN,
+    absentDays: 0, // 관리자는 무결근(거점 공백 불가)
+  })
 }
 
 // ── ③ 운영인력 · 현장운영 12명 (gid 121~132) ─────────────

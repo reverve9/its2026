@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
-import { getAssignment, getZone, getZones, getAssignments, reportIssue, checkIn, getPatrolCandidates, recordPatrolAudit, shiftLabel } from '../../lib/services'
+import { getAssignment, getZone, getZones, getAssignments, getActiveShift, reportIssue, checkIn, getPatrolCandidates, recordPatrolAudit, shiftLabel } from '../../lib/services'
 import { useLive, useNowMin } from '../../lib/useLive'
 import { getNowMin, fmtHM } from '../../lib/clock'
 import { StatusBadge, Fill } from '../../components/ui'
@@ -19,6 +19,7 @@ export default function ManagerHome({ session, onLogout }: { session: FieldSessi
   const zone = useLive(() => (me?.zoneId ? getZone(me.zoneId) : Promise.resolve(undefined)), [me?.zoneId])
   const all = useLive(getAssignments) ?? []
   const zones = useLive(getZones) ?? []
+  const activeShift = useLive(getActiveShift) ?? 'AM'
   const zoneName = (id: string | null) => zones.find((z) => z.id === id)?.name ?? '—'
 
   const [itype, setItype] = useState<IssueType>('시설이상')
@@ -61,8 +62,12 @@ export default function ManagerHome({ session, onLogout }: { session: FieldSessi
 
   // 거점관리자가 출결을 관리하는 대상은 자원봉사자다 — 관리자 자신(운영인력)을 넣으면
   // 목록이 9명인데 거점 현황은 8/8(봉사자 정원)로 어긋난다.
+  //
+  // 기준은 me.shift 가 아니라 '지금 도는 조'다. 관리자는 전일 상주라 자기 조가 없고(shift 는
+  // 스키마 필수 필드일 뿐), me.shift 로 거르면 오후에도 오전조 명단이 떠서 거점 현황(활성 조 기준)과
+  // 어긋난다. 거점 현황 8/8 과 같은 모수를 봐야 한다.
   const crew = all.filter(
-    (a) => a.zoneId === zone.id && a.shift === me.shift && !a.isReserve && a.kind === '자원봉사자'
+    (a) => a.zoneId === zone.id && a.shift === activeShift && !a.isReserve && a.kind === '자원봉사자'
   )
   const absent = crew.filter((a) => a.status === 'absent')
   const missed = crew.filter((a) => a.checks.some((c) => c === 'missed'))
@@ -94,7 +99,8 @@ export default function ManagerHome({ session, onLogout }: { session: FieldSessi
         {/* 거점·관리자 헤딩 */}
         <div>
           <div className="font-title text-title font-semibold leading-tight text-ink-strong">{zone.name}</div>
-          <div className="mt-0.5 text-label text-ink-muted">{me.personName} · {shiftLabel(me.shift)} 거점관리자</div>
+          {/* 관리자는 전일 상주라 자기 조가 없다 — 대신 지금 관장 중인 조를 보여준다. */}
+          <div className="mt-0.5 text-label text-ink-muted">{me.personName} · 거점관리자 · {shiftLabel(activeShift)} 관장</div>
         </div>
         {/* 내 거점 현황 */}
         <div className="card p-4">
