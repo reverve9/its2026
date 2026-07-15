@@ -24,7 +24,9 @@ export default function Identify({ onLogin }: { onLogin: (s: FieldSession) => vo
       setError('명단에서 찾을 수 없습니다. 전화번호와 성명을 확인해 주세요.')
       return
     }
-    onLogin({ assignmentId: a.id, name: a.personName, phone: a.phone, role: a.role })
+    // 세션엔 '누구인가'만 담는다 — 이름·연락처·역할은 store 에서 파생한다(getFieldIdentity).
+    // 굳혀두면 시드가 바뀔 때 어긋나고, 정작 읽는 곳도 없었다.
+    onLogin({ assignmentId: a.id })
   }
 
   return (

@@ -14,7 +14,15 @@ const QrScanner = lazy(() => import('../../components/QrScanner'))
 
 const ISSUE_TYPES: IssueType[] = ['민원', '시설이상', '분실물', '미아', '안전사고']
 
-export default function ManagerHome({ session, onLogout }: { session: FieldSession; onLogout: () => void }) {
+// 운영인력 현장앱 — 거점관리자 + 현장인력 공용.
+//
+// role 로 화면을 가르지 않는다. zoneId 유무가 카드를 가른다:
+//   공통(전원)      본부 공지 · 이슈 보고
+//   zoneId 있으면 + 거점 헤딩 · 거점 현황 · 내 거점 인력 · 스캔/순회
+//
+// 그래서 '거점관리자 + 현장인력 겸직'이나 '거점 없는 슈퍼어드민' 같은 경우에 특례가 없다 —
+// 거점이 있으면 거점 카드가 뜨고 없으면 안 뜬다. role 로 갈랐으면 겸직마다 분기가 늘어난다.
+export default function OpsHome({ session, onLogout }: { session: FieldSession; onLogout: () => void }) {
   const now = useNowMin()
   const me = useLive(() => getAssignment(session.assignmentId), [session.assignmentId])
   const zone = useLive(() => (me?.zoneId ? getZone(me.zoneId) : Promise.resolve(undefined)), [me?.zoneId])
@@ -59,7 +67,8 @@ export default function ManagerHome({ session, onLogout }: { session: FieldSessi
     setScanResult({ ok: true, msg: `${target.personName} 출근 확인 (${shiftLabel(target.shift)})` })
   }
 
-  if (!me || !zone) return <div className="grid h-full place-items-center text-label text-ink-muted">불러오는 중…</div>
+  // zone 을 가드에 넣지 않는다 — 거점 없는 운영인력(현장인력·슈퍼어드민)이 무한 로딩에 걸린다.
+  if (!me) return <div className="grid h-full place-items-center text-label text-ink-muted">불러오는 중…</div>
 
   // 거점관리자가 출결을 관리하는 대상은 자원봉사자다 — 관리자 자신(운영인력)을 넣으면
   // 목록이 9명인데 거점 현황은 8/8(봉사자 정원)로 어긋난다.
@@ -67,15 +76,15 @@ export default function ManagerHome({ session, onLogout }: { session: FieldSessi
   // 기준은 me.shift 가 아니라 '지금 도는 조'다. 관리자는 전일 상주라 자기 조가 없고(shift 는
   // 스키마 필수 필드일 뿐), me.shift 로 거르면 오후에도 오전조 명단이 떠서 거점 현황(활성 조 기준)과
   // 어긋난다. 거점 현황 8/8 과 같은 모수를 봐야 한다.
-  const crew = all.filter(
-    (a) => a.zoneId === zone.id && a.shift === activeShift && !a.isReserve && a.kind === '자원봉사자'
-  )
+  const crew = zone
+    ? all.filter((a) => a.zoneId === zone.id && a.shift === activeShift && !a.isReserve && a.kind === '자원봉사자')
+    : []
   const absent = crew.filter((a) => a.status === 'absent')
   const missed = crew.filter((a) => a.checks.some((c) => c === 'missed'))
-  const gap = zone.present < zone.quota
+  const gap = zone ? zone.present < zone.quota : false
 
   const submitIssue = async () => {
-    if (!note.trim()) return
+    if (!note.trim() || !zone) return
     await reportIssue({
       type: itype, zoneId: zone.id, note: note.trim(),
       ts: getNowMin(), idempotencyKey: `field:${me.id}:issue:${getNowMin()}`,
@@ -97,12 +106,19 @@ export default function ManagerHome({ session, onLogout }: { session: FieldSessi
       </header>
 
       <div className="flex-1 space-y-4 overflow-auto bg-page p-4">
-        {/* 거점·관리자 헤딩 */}
+        {/* 헤딩 — 거점이 있으면 거점명, 없으면 운영본부 소속임을 밝힌다 */}
         <div>
-          <div className="font-title text-title font-semibold leading-tight text-ink-strong">{zone.name}</div>
-          {/* 관리자는 전일 상주라 자기 조가 없다 — 대신 지금 관장 중인 조를 보여준다. */}
-          <div className="mt-0.5 text-label text-ink-muted">{me.personName} · 거점관리자 · {shiftLabel(activeShift)} 관장</div>
+          <div className="font-title text-title font-semibold leading-tight text-ink-strong">{zone?.name ?? '운영본부'}</div>
+          {/* 운영인력은 전일 상주라 자기 조가 없다 — 거점이 있으면 지금 관장 중인 조를 보여준다. */}
+          <div className="mt-0.5 text-label text-ink-muted">
+            {me.personName} · {me.role}
+            {zone && ` · ${shiftLabel(activeShift)} 관장`}
+          </div>
         </div>
+
+        {/* ↓ 거점 카드 — zoneId 있을 때만. 거점 없는 운영인력에겐 관장할 거점이 없다. */}
+        {zone && (
+          <>
         {/* 내 거점 현황 */}
         <div className="card p-4">
           <div className="flex items-center justify-between">
@@ -132,10 +148,15 @@ export default function ManagerHome({ session, onLogout }: { session: FieldSessi
             </div>
           </div>
         </div>
+          </>
+        )}
 
-        {/* 본부 공지 — 거점 현황과 같이 '상황 파악' 묶음. 아래 액션(순회·스캔)을 지시가 바꿀 수 있어 위에 둔다. */}
+        {/* 본부 공지 — 공통. 거점 유무와 무관하게 전원이 받는다.
+            거점 현황 아래·액션 위: 지시가 아래 액션(순회·스캔)을 바꿀 수 있다. */}
         <NoticeCard assignmentId={me.id} />
 
+        {zone && (
+          <>
         {/* 내 거점 인력 */}
         <div className="card p-4">
           <div className="mb-2 text-label font-semibold text-ink-strong">내 거점 인력 ({crew.length})</div>
@@ -174,7 +195,9 @@ export default function ManagerHome({ session, onLogout }: { session: FieldSessi
           </div>
         )}
 
-        {/* 이슈 보고 */}
+        {/* 이슈 보고 — 원래는 공통 카드여야 하지만 Issue.zoneId 가 string(필수)이라
+            거점 없는 운영인력은 구조적으로 올릴 수 없다. 타입을 nullable 로 넓히는 건
+            이슈 큐·일일보고의 zoneName 조회까지 건드려서 다음 단계로 뺐다. */}
         <div className="card p-4">
           <div className="text-label font-semibold text-ink-strong">이슈 보고</div>
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -204,6 +227,16 @@ export default function ManagerHome({ session, onLogout }: { session: FieldSessi
           </button>
           {sent && <p className="mt-2 text-caption text-ok">접수됨 — 운영본부 대장에 반영되었습니다.</p>}
         </div>
+          </>
+        )}
+
+        {/* 거점 없는 운영인력은 아직 공지만 받는다. QR 스캐너(서명)와 이슈 보고가
+            붙으면 이 화면이 채워진다 — 지금은 그 사실을 숨기지 않고 그대로 둔다. */}
+        {!zone && (
+          <p className="text-caption leading-snug text-ink-muted">
+            거점 배치가 없어 거점 관제 카드는 표시되지 않습니다. 본부 공지는 위에서 확인하십시오.
+          </p>
+        )}
       </div>
 
       {scanning && (

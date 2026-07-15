@@ -38,9 +38,14 @@ export default function People() {
   const pg = usePageState(`${q}|${status}|${shift}|${zoneFilter}|${reserveOnly}`)
 
   const now = useNowMin()
-  const assignments = useLive(getAssignments)
+  const all = useLive(getAssignments)
   const zones = useLive(getZones) ?? []
-  if (!assignments) return null
+  if (!all) return null
+
+  // 실시간 관제 대상은 자원봉사자다(핸드오프 §7 부채). 운영인력은 출근 버튼이 없어 근태
+  // 이벤트 자체가 없고 — 과업지시서가 요구하는 건 '자원봉사자 출결 확인'이다 — 상주 계획만
+  // 있다. 섞어두면 '근무중' 카운트에 22명이 얹히고, 찍은 적 없는 출근시각이 로스터에 뜬다.
+  const assignments = all.filter((a) => a.kind === '자원봉사자')
 
   const zoneName = (a: Assignment) => (a.isReserve ? '예비 · 미배정' : zones.find((z) => z.id === a.zoneId)?.name ?? '—')
   const onDuty = assignments.filter((a) => a.status === 'on').length

@@ -118,8 +118,15 @@ function derive(a: StoredAssignment, now: number): Assignment {
   // 운영인력·현장운영 — 운영본부 상주. 거점 배치도 정시체크도 없고 2교대에 속하지 않는다.
   // 근태는 예정 출퇴근(10시간 상주)으로만 파생한다.
   // 운영인력(거점관리자·현장운영)은 교대가 아니라 1일 10시간 상주 — 조 슬롯이 아니라
-  // plannedIn/OutMin 으로만 근태를 파생하고, 정시체크(checks)는 자원봉사자 관제 항목이라 비운다.
+  // plannedIn/OutMin 으로 상주 여부만 파생한다. 정시체크(checks)는 자원봉사자 관제 항목이라 비운다.
   // 거점관리자는 거점에 상주하므로 zoneId 를 유지한다(현장운영은 애초에 null).
+  //
+  // ⚠️ checkedInAt/checkedOutAt 을 채우지 않는다 — 운영인력에겐 출근 버튼이 없다.
+  // 이전엔 `checkedInAt: now >= plannedInMin ? fmtHM(plannedInMin)` 으로 08:30 을 지어내서
+  // 22명 전원이 '08:30 출근'으로 관제 로스터에 떴다. 찍은 적 없는 값이다.
+  // 운영인력 출결은 과업이 아니다 — 과업지시서가 요구하는 건 '자원봉사자 출결 확인'이고,
+  // 직영 인력은 발주처 보고 대상도 아니다(일용은 내부 원가). 그래서 근태 이벤트 자체가 없고,
+  // 정산도 이벤트가 아니라 배치계획의 absentDays 로 산정한다. status 는 '상주 계획'일 뿐이다.
   if (a.kind === '운영인력' && a.plannedOutMin !== undefined) {
     const status: DutyStatus =
       now < a.plannedInMin ? 'before' : now >= a.plannedOutMin ? 'off' : 'on'
@@ -127,8 +134,6 @@ function derive(a: StoredAssignment, now: number): Assignment {
       id: a.id, personId: a.personId, personName: a.personName, zoneId: a.zoneId,
       kind: a.kind, role: a.role, employment: a.employment, shift: a.shift,
       date: a.date, isReserve: false, status, lang: a.lang, phone: a.phone, checks: [],
-      checkedInAt: now >= a.plannedInMin ? fmtHM(a.plannedInMin) : undefined,
-      checkedOutAt: now >= a.plannedOutMin ? fmtHM(a.plannedOutMin) : undefined,
       goods: a.goods,
     }
   }
@@ -235,6 +240,39 @@ export async function getZone(id: string): Promise<Zone | undefined> {
 
 // ── 현장앱 신원확인(저마찰) — 전번+성명 조회. 백엔드 인증 아님(R1 경유). ──
 const digitsOnly = (s: string) => s.replace(/\D/g, '')
+// ── 현장앱 신원(R5) ─────────────────────────────────────
+// 현장앱이 '누구에게 무엇을 보여줄지' 정할 때 보는 유일한 값. 화면은 세션이 아니라 이걸 본다.
+//
+// 축이 둘이다:
+//   kind    자원봉사자 / 운영인력 → 화면 자체를 가른다(VolunteerHome / OpsHome)
+//   zoneId  거점 유무 → 운영인력 화면 안에서 거점 카드를 가른다
+// role 로 가르지 않는다. 거점관리자·현장인력 겸직이나 슈퍼어드민 같은 경우에 role 은
+// 답을 못 주지만 zoneId 는 항상 답을 준다 — 거점이 있으면 거점 카드, 없으면 공통만.
+//
+// assignmentId 가 nullable 인 이유: 슈퍼어드민은 인력현황(=Assignment)에 없다.
+// 지금은 배치에서만 신원이 나오지만, 타입이 그 자리를 미리 열어둬야 나중에 안 뒤집는다.
+export interface FieldIdentity {
+  assignmentId: string | null
+  personName: string
+  kind: StaffKind
+  zoneId: string | null
+  role?: StaffRole // 표기용 배지. 분기 기준이 아니다
+  status?: DutyStatus
+}
+
+export async function getFieldIdentity(assignmentId: string): Promise<FieldIdentity | undefined> {
+  const a = await getAssignment(assignmentId)
+  if (!a) return undefined
+  return {
+    assignmentId: a.id,
+    personName: a.personName,
+    kind: a.kind,
+    zoneId: a.zoneId,
+    role: a.role,
+    status: a.status,
+  }
+}
+
 export async function findVolunteer(phone: string, name: string): Promise<Assignment | undefined> {
   const d = digitsOnly(phone)
   const nm = name.trim()
