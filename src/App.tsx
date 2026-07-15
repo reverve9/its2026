@@ -9,7 +9,6 @@ import Settlement from './surfaces/console/pages/Settlement'
 import Safety from './surfaces/console/pages/Safety'
 import Issues from './surfaces/console/pages/Issues'
 import Report from './surfaces/console/pages/Report'
-import Placeholder from './components/Placeholder'
 import TimeScrubber from './components/TimeScrubber'
 import CaptureShell from './components/CaptureShell'
 import { useCapture, setCapture } from './lib/capture'
@@ -64,10 +63,6 @@ export default function App() {
           <Route path="/safety" element={<Safety />} />
           <Route path="/report" element={<Report />} />
           <Route path="/settlement" element={<Settlement />} />
-          <Route
-            path="/settlement/close"
-            element={<Placeholder title="정산 마감·산출내역서" note="일자별 마감 + 산출내역서 출력(제안서 산출내역 근거). 제작 예정." />}
-          />
           <Route path="/issues" element={<Issues />} />
         </Route>
 

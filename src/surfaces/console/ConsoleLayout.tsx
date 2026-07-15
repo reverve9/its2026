@@ -19,17 +19,14 @@ const groups: { title: string; items: NavItem[] }[] = [
     ],
   },
   {
+    // 시간 비의존 마스터 대장 — 스크러버를 밀어도 불변.
+    // 정산도 같은 성격(일일 정산이 아니라 행사 후 일괄)이라 여기 하단에 둔다.
+    // '정산 마감'은 만들지 않았다: 일일 단위로 정산하지 않으므로 마감할 단위가 없다.
     title: '운영',
     items: [
       { to: '/personnel', label: '인력 현황' },
       { to: '/vendors', label: '업체 등록 현황' },
-    ],
-  },
-  {
-    title: '정산',
-    items: [
-      { to: '/settlement', label: '자원봉사자' },
-      { to: '/settlement/close', label: '정산 마감·산출내역서' },
+      { to: '/settlement', label: '정산 산출내역' },
     ],
   },
 ]
