@@ -32,7 +32,23 @@ export function getVersion(): number {
 export const REFERENCE_DATE = '2026-10-21'
 const REFERENCE_NOW_MIN = 14 * 60 + 20 // 860
 
+// ── 날짜 ────────────────────────────────────────────────
+// 시계에 날짜 축이 붙은 이유: 근태는 날짜별 사실인데 시계가 분(0~1439)만 갖고 있어서
+// 이벤트가 하루치밖에 존재할 수 없었다. 배치·물품·정산서류·교육이수 같은 '현황'은
+// 행사 5일 고정이라 날짜를 갖지 않는다 — 날짜를 갖는 건 '라이브'(이벤트)뿐이다.
+//
+// ⚠️ 시드가 있는 날만 노출한다. 10/22·23 은 아직 오지 않은 날이라 이벤트가 없고,
+// 그리로 밀면 파생이 '전원 미출근'을 만들어 관제가 거짓말을 한다(GRACE 초과 → absent).
+// 정산의 5일(DEPLOYMENT_PLAN)은 계획이라 날짜 축과 무관하게 그대로 산다.
+export const SEEDED_DATES = ['2026-10-19', '2026-10-20', '2026-10-21'] as const
+export const DATE_LABELS: Record<string, string> = {
+  '2026-10-19': '월 · 1일차',
+  '2026-10-20': '화 · 2일차',
+  '2026-10-21': '수 · 3일차',
+}
+
 let nowMin = REFERENCE_NOW_MIN
+let nowDate: string = REFERENCE_DATE
 
 export function getNowMin(): number {
   return nowMin
@@ -45,8 +61,20 @@ export function setNowMin(min: number): void {
   emitChange()
 }
 
-// 기준 시각으로 되돌리기(스크러버 리셋).
+export function getNowDate(): string {
+  return nowDate
+}
+
+// 시드 없는 날짜는 거부한다(위 ⚠️). 호출부가 임의 문자열을 밀어도 화면이 거짓말하지 않게.
+export function setNowDate(date: string): void {
+  if (date === nowDate || !SEEDED_DATES.includes(date as (typeof SEEDED_DATES)[number])) return
+  nowDate = date
+  emitChange()
+}
+
+// 기준 시각으로 되돌리기(스크러버 리셋) — 날짜도 같이 돌린다.
 export function resetNow(): void {
+  setNowDate(REFERENCE_DATE)
   setNowMin(REFERENCE_NOW_MIN)
 }
 

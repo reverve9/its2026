@@ -2,12 +2,13 @@
 // 저장소는 원시 사실만 보관하고, '현재 시각'(clock) 기준 파생값은 전부 여기서 계산한다(R5).
 // 쓰기는 명령형 함수(R3) + 멱등키(R4). 나중에 Supabase 로 교체해도 이 시그니처는 불변.
 
-import { getNowMin, getNowHM, fmtHM } from './clock'
+import { getNowMin, getNowDate, getNowHM, fmtHM } from './clock'
 import { distanceM } from './geo'
 import {
   rawZones,
   rawAssignments,
   rawEvents,
+  dutyProfileOf,
   rawIssues,
   rawNotices,
   deploymentPlan,
@@ -45,7 +46,7 @@ import {
   setSuspension,
   setHazard,
 } from './store'
-import type { StoredAssignment, StoredEvent, SafetyState } from './store'
+import type { StoredAssignment, StoredEvent, StoredDutyProfile, SafetyState } from './store'
 import type {
   Zone,
   Assignment,
@@ -98,19 +99,31 @@ export const shiftSlotMins = (s: Shift): number[] => SLOTS[s]
 export const shiftWindow = (s: Shift) => WIN[s]
 
 // ── 파생 헬퍼 ───────────────────────────────────────────
-const eventsOf = (id: string): StoredEvent[] => rawEvents().filter((e) => e.assignmentId === id)
+// 이벤트는 라이브(날짜별)라 반드시 현재 날짜로 거른다. 이 한 줄이 날짜 축의 목이다 —
+// derive·getDutyLog 가 전부 여기를 지난다.
+const eventsOf = (id: string): StoredEvent[] =>
+  rawEvents().filter((e) => e.assignmentId === id && e.date === getNowDate())
 const inWindow = (w?: { startMin: number; endMin: number }, t?: number) =>
   !!w && t !== undefined && t >= w.startMin && t < w.endMin
-const inBreak = (a: StoredAssignment, t: number) => (a.breaks ?? []).some((b) => inWindow(b, t))
+const inBreak = (p: StoredDutyProfile | undefined, t: number) =>
+  (p?.breaks ?? []).some((b) => inWindow(b, t))
 
-// 원시 배치 → 현재 시각 기준 도메인 Assignment(상태·checks·출퇴근 파생).
+// 원시 배치(현황) → 현재 날짜·시각 기준 도메인 Assignment(상태·checks·출퇴근 파생).
+//
+// date 는 배치가 갖고 있던 값이 아니라 '지금 보고 있는 날짜'다. 배치는 5일 고정이라 날짜가
+// 없고, Assignment 는 그 배치의 오늘자 뷰이기 때문이다. 현장앱의 멱등키가
+// `field:${a.id}:checkin:${a.date}:${a.shift}` 라 이 한 줄이 체크인 키를 날짜별로 만든다 —
+// 배치에 고정 날짜가 박혀 있었다면 어제 체크인한 사람이 오늘 체크인에 막혔을 것이다.
 function derive(a: StoredAssignment, now: number): Assignment {
+  const date = getNowDate()
+  const prof = dutyProfileOf(a.id, date)
+
   // 예비인력(미배정) — 대기 상태, 정시체크 없음.
   if (a.isReserve && !a.zoneId) {
     return {
       id: a.id, personId: a.personId, personName: a.personName, zoneId: null,
       kind: a.kind, role: a.role, employment: a.employment, shift: a.shift,
-      date: a.date, isReserve: true, status: 'before', lang: a.lang, phone: a.phone, checks: [],
+      date, isReserve: true, status: 'before', lang: a.lang, phone: a.phone, checks: [],
       standby: a.standby, goods: a.goods,
     }
   }
@@ -133,7 +146,7 @@ function derive(a: StoredAssignment, now: number): Assignment {
     return {
       id: a.id, personId: a.personId, personName: a.personName, zoneId: a.zoneId,
       kind: a.kind, role: a.role, employment: a.employment, shift: a.shift,
-      date: a.date, isReserve: false, status, lang: a.lang, phone: a.phone, checks: [],
+      date, isReserve: false, status, lang: a.lang, phone: a.phone, checks: [],
       goods: a.goods,
     }
   }
@@ -146,11 +159,11 @@ function derive(a: StoredAssignment, now: number): Assignment {
   const win = WIN[a.shift]
 
   let status: DutyStatus
-  if (a.noShow || (!checkedIn && now >= a.plannedInMin + GRACE)) status = 'absent'
+  if (prof?.noShow || (!checkedIn && now >= a.plannedInMin + GRACE)) status = 'absent'
   else if (!checkedIn) status = 'before'
   else if (checkedOut || now >= win.end) status = 'off'
-  else if (inBreak(a, now)) status = 'break'
-  else if (inWindow(a.moving, now)) status = 'moving'
+  else if (inBreak(prof, now)) status = 'break'
+  else if (inWindow(prof?.moving, now)) status = 'moving'
   else status = 'on'
 
   // checks — 조 슬롯 중 현재 시각까지 지난(due) 것만. 미래 슬롯은 미포함(개인상세가 '예정'으로 표시).
@@ -158,7 +171,7 @@ function derive(a: StoredAssignment, now: number): Assignment {
   for (const slot of SLOTS[a.shift]) {
     if (slot > now) break
     if (status === 'absent') { checks.push('absent'); continue }
-    if (inBreak(a, slot)) { checks.push('break'); continue }
+    if (inBreak(prof, slot)) { checks.push('break'); continue }
     const hit = evs.some((e) => e.kind === 'hourly' && e.slot === slot && e.timeMin <= now)
     checks.push(hit ? 'ok' : checkedIn ? 'missed' : 'absent')
   }
@@ -166,7 +179,7 @@ function derive(a: StoredAssignment, now: number): Assignment {
   return {
     id: a.id, personId: a.personId, personName: a.personName, zoneId: a.zoneId,
     kind: a.kind, role: a.role, employment: a.employment, shift: a.shift,
-    date: a.date, isReserve: a.isReserve, status, lang: a.lang, phone: a.phone,
+    date, isReserve: a.isReserve, status, lang: a.lang, phone: a.phone,
     checkedInAt: checkedIn ? fmtHM(checkinEv!.timeMin) : undefined,
     checkedOutAt: checkedOut ? fmtHM(checkoutEv!.timeMin) : undefined,
     checks,
@@ -305,7 +318,8 @@ export async function getSampleLogins(): Promise<SampleLogin[]> {
 // 개인 근퇴 타임라인 — 이벤트 + 휴게/이동 구간에서 파생.
 export async function getDutyLog(id: string): Promise<DutyLogEntry[]> {
   const a = findAssignment(id)
-  if (!a || a.noShow) return []
+  const prof = a && dutyProfileOf(a.id, getNowDate())
+  if (!a || prof?.noShow) return []
   const now = getNowMin()
   const entries: DutyLogEntry[] = []
   for (const e of eventsOf(a.id)) {
@@ -319,12 +333,12 @@ export async function getDutyLog(id: string): Promise<DutyLogEntry[]> {
     else
       entries.push({ time: fmtHM(e.timeMin), label: `정시(1h) 체크 ${fmtHM(e.slot ?? e.timeMin)}`, status: 'on', via: e.method })
   }
-  for (const b of a.breaks ?? []) {
+  for (const b of prof?.breaks ?? []) {
     if (b.startMin <= now) entries.push({ time: fmtHM(b.startMin), label: '휴게 시작', status: 'break', note: b.note })
     if (b.endMin <= now) entries.push({ time: fmtHM(b.endMin), label: '휴게 종료·복귀', status: 'on' })
   }
-  if (a.moving && a.moving.startMin <= now)
-    entries.push({ time: fmtHM(a.moving.startMin), label: '거점 간 이동', status: 'moving', note: a.moving.note })
+  if (prof?.moving && prof.moving.startMin <= now)
+    entries.push({ time: fmtHM(prof.moving.startMin), label: '거점 간 이동', status: 'moving', note: prof.moving.note })
   return entries.sort((x, y) => hm(x.time) - hm(y.time))
 }
 
@@ -332,7 +346,7 @@ export async function getDutyLog(id: string): Promise<DutyLogEntry[]> {
 export async function getAttendanceEvents(): Promise<AttendanceEvent[]> {
   const now = getNowMin()
   return rawEvents()
-    .filter((e) => (e.kind === 'checkin' || e.kind === 'hourly') && e.timeMin <= now)
+    .filter((e) => e.date === getNowDate() && (e.kind === 'checkin' || e.kind === 'hourly') && e.timeMin <= now)
     .sort((x, y) => y.timeMin - x.timeMin)
     .slice(0, 6)
     .map((e) => {
@@ -723,7 +737,7 @@ export async function checkIn(
   opts: { method: CheckInMethod; gps?: Coords; ts: number; idempotencyKey: string; anomaly?: string }
 ): Promise<boolean> {
   return addEvent({
-    idempotencyKey: opts.idempotencyKey, assignmentId, kind: 'checkin',
+    idempotencyKey: opts.idempotencyKey, assignmentId, date: getNowDate(), kind: 'checkin',
     timeMin: opts.ts, method: toCheckMethod(opts.method), gps: opts.gps, anomaly: opts.anomaly,
   })
 }
@@ -732,7 +746,7 @@ export async function checkOut(
   assignmentId: string,
   opts: { ts: number; idempotencyKey: string }
 ): Promise<boolean> {
-  return addEvent({ idempotencyKey: opts.idempotencyKey, assignmentId, kind: 'checkout', timeMin: opts.ts })
+  return addEvent({ idempotencyKey: opts.idempotencyKey, assignmentId, date: getNowDate(), kind: 'checkout', timeMin: opts.ts })
 }
 
 export async function hourlyCheck(
@@ -740,7 +754,7 @@ export async function hourlyCheck(
   opts: { slot: number; gps?: Coords; ts: number; idempotencyKey: string }
 ): Promise<boolean> {
   return addEvent({
-    idempotencyKey: opts.idempotencyKey, assignmentId, kind: 'hourly',
+    idempotencyKey: opts.idempotencyKey, assignmentId, date: getNowDate(), kind: 'hourly',
     timeMin: opts.ts, slot: opts.slot, gps: opts.gps,
   })
 }
@@ -755,8 +769,8 @@ export async function assignReserve(alertId: string, reserveAssignmentId: string
   if (!placed) return false
   const method: CheckMethod = zoneOf(zoneId)?.checkMode === 'self_gps' ? 'gps' : 'scan'
   addEvent({
-    idempotencyKey: `assign:${reserveAssignmentId}:${zoneId}:${now}`,
-    assignmentId: reserveAssignmentId, kind: 'checkin', timeMin: now, method,
+    idempotencyKey: `assign:${reserveAssignmentId}:${getNowDate()}:${zoneId}:${now}`,
+    assignmentId: reserveAssignmentId, date: getNowDate(), kind: 'checkin', timeMin: now, method,
   })
   return true
 }
@@ -928,7 +942,7 @@ export async function recordPatrolAudit(
   opts: { result: 'ok' | 'mismatch'; ts: number; idempotencyKey: string }
 ): Promise<boolean> {
   const anomaly = opts.result === 'mismatch' ? '순회감사 불일치 — 위치·본인 확인 필요' : undefined
-  const ok = addEvent({ idempotencyKey: opts.idempotencyKey, assignmentId, kind: 'audit', timeMin: opts.ts, anomaly })
+  const ok = addEvent({ idempotencyKey: opts.idempotencyKey, assignmentId, date: getNowDate(), kind: 'audit', timeMin: opts.ts, anomaly })
   if (opts.result === 'mismatch') {
     const a = findAssignment(assignmentId)
     addIssue({

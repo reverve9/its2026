@@ -3,7 +3,7 @@
 // (services 가 async(R2)이므로 훅도 Promise 를 다룬다.)
 
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { subscribe, getVersion, getNowMin } from './clock'
+import { subscribe, getVersion, getNowMin, getNowDate } from './clock'
 
 // 라이브 버전 — 시각·store 어느 쪽이 바뀌어도 증가.
 export function useLiveVersion(): number {
@@ -13,6 +13,11 @@ export function useLiveVersion(): number {
 // 현재 시각(분) — 스크러버·헤더 시계용. 변경 시 리렌더.
 export function useNowMin(): number {
   return useSyncExternalStore(subscribe, getNowMin, getNowMin)
+}
+
+// 현재 날짜(YYYY-MM-DD) — 날짜 스크러버용. 변경 시 리렌더.
+export function useNowDate(): string {
+  return useSyncExternalStore(subscribe, getNowDate, getNowDate)
 }
 
 // async fetcher 를 라이브 버전에 묶어 재조회. 최초/변경 시 재실행.

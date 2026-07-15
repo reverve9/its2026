@@ -1,10 +1,14 @@
 import { useLocation } from 'react-router-dom'
-import { useNowMin } from '../lib/useLive'
-import { setNowMin, resetNow, fmtHM } from '../lib/clock'
+import { useNowMin, useNowDate } from '../lib/useLive'
+import { setNowMin, setNowDate, resetNow, fmtHM, SEEDED_DATES, DATE_LABELS } from '../lib/clock'
 import { useCapture } from '../lib/capture'
 
 // 시간 스크러버 (dev 컨트롤) — 10:00→18:00 을 밀면 하루를 겪는다.
 // 밀면: 체크가 쌓이고, 미이행이 soft 플래그로 뜨고, 14:00 교대에 오후조 미출근이 경보로 뜬다.
+//
+// 날짜 탭은 라이브(이벤트)만 갈아끼운다 — 배치·물품·정산서류·교육이수는 현황이라 5일 내내 같다.
+// 지난 이틀(1·2일차)은 완주한 날이라 18:00 까지 밀어도 근태가 꽉 차 있고, 오늘(3일차)만
+// 14:20 이후가 비어 있다(아직 안 온 시각). 시드가 없는 10/22·23 은 아예 노출하지 않는다.
 // ⚠️ 캡쳐 아트보드 바깥(fixed). 최종 캡쳐 시 이 바는 제외한다.
 
 const START = 10 * 60 // 10:00
@@ -20,6 +24,7 @@ const MARKS = [
 export default function TimeScrubber() {
   const { pathname } = useLocation()
   const now = useNowMin()
+  const date = useNowDate()
   const capture = useCapture()
   const shift = now < 14 * 60 ? '오전조' : '오후조'
 
@@ -36,7 +41,19 @@ export default function TimeScrubber() {
         <span className="shrink-0 rounded-md bg-neutral-900 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
           DEV
         </span>
-        <span className="shrink-0 text-caption font-semibold text-ink-muted">시간 스크러버</span>
+        <div className="flex shrink-0 gap-0.5 rounded-md border border-line p-0.5">
+          {SEEDED_DATES.map((d) => (
+            <button
+              key={d}
+              onClick={() => setNowDate(d)}
+              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold transition ${
+                d === date ? 'bg-primary-600 text-white' : 'text-ink-muted hover:bg-neutral-100'
+              }`}
+            >
+              {DATE_LABELS[d]}
+            </button>
+          ))}
+        </div>
         <span className="tnum shrink-0 rounded-md bg-primary-50 px-2 py-0.5 text-label font-bold text-primary-700">
           {fmtHM(now)} · {shift}
         </span>

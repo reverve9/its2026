@@ -6,11 +6,12 @@ import type {
   Coords, CheckMethod, EducationKind, EducationRecord, Employment, FoodVendor, GoodsIssue, Issue,
   PayoutInfo, StaffKind, StaffRole, Zone,
 } from '../types'
-import { emitChange } from './clock'
+import { emitChange, getNowDate } from './clock'
 import {
   zones as seedZones,
   assignments as seedAssignments,
   events as seedEvents,
+  dutyProfiles as seedDutyProfiles,
   issues as seedIssues,
   notices as seedNotices,
   DEPLOYMENT_PLAN,
@@ -18,7 +19,6 @@ import {
   ACTIVITY_GOODS_SETS,
   ACTIVITY_GOODS_UNIT_COST,
   WITHHOLDING_RATE,
-  SEED_DATE,
   foodVendors as seedVendors,
   FOOD_PARASOLS,
   readiness as seedReadiness,
@@ -39,20 +39,31 @@ export interface StoredAssignment {
   employment?: Employment // 운영인력만 — 직원(급여·미산정) | 일용(시급×시간)
   lang?: string[]
   isReserve: boolean
-  date: string
   shift: 'AM' | 'PM'
   zoneId: string | null
   plannedInMin: number // 예정 출근 시각(분)
   plannedOutMin?: number // 예정 퇴근(분) — 현장운영(본부 상주)만. 봉사자·거점관리자는 조 창(WIN)에서 파생
-  breaks?: { startMin: number; endMin: number; note?: string }[]
-  moving?: { startMin: number; endMin: number; note?: string }
-  noShow?: boolean // 미출근(이벤트 없음)
   standby?: Coords // 예비인력 대기 위치
   goods?: GoodsIssue // 활동물품 지급 현황(마스터)
   payout?: PayoutInfo // 정산 서류·지급계좌(마스터)
   // 정산용 결근 이력(5일 누적, 마스터). 계획일수는 조에서 파생(오전 5일 / 오후 4일 — 금 1교대).
-  // 오늘의 실시간 미출근(noShow)과 별개 — 이건 행사 기간 누적 사실이다.
+  // 라이브 근태(StoredDutyProfile.noShow)와 별개의 층이다 — 이건 행사 5일 누적 확정 사실이고
+  // 정산이 여기 위에 선다. 시드는 둘을 정합시킨다: 지난 날(10/19·20)의 noShow 는 이 값에서
+  // 유도되므로 '어제 결근인데 정산은 결근 0일' 같은 모순이 생기지 않는다.
+  // 오늘(10/21)의 noShow 는 아직 확정 전(예비 투입으로 메울 수 있다)이라 여기 안 들어온다.
   absentDays?: number
+}
+
+// ── 라이브 근태 프로필(날짜별) ──────────────────────────
+// 배치(위 StoredAssignment)는 '현황'이라 행사 5일 고정 — 날짜를 갖지 않는다.
+// 미출근·휴게·이동은 그날그날의 사실이라 여기 얹는다. 이전엔 이 셋이 배치 필드로 붙어 있어서
+// 날짜 축이 생기는 순간 '어제도 똑같은 3명이 미출근'이 되는 구조였다.
+export interface StoredDutyProfile {
+  assignmentId: string
+  date: string
+  noShow?: boolean // 미출근(이벤트 없음)
+  breaks?: { startMin: number; endMin: number; note?: string }[]
+  moving?: { startMin: number; endMin: number; note?: string }
 }
 
 // 먹거리 입점업체 등록 레코드 — 시간 비의존 마스터(파생 없음 → FoodVendor 와 동형).
@@ -64,6 +75,7 @@ export interface StoredEvent {
   idempotencyKey: string
   assignmentId: string
   kind: EventKind
+  date: string // 라이브 사실 — 이벤트만 날짜를 갖는다(현황은 5일 고정)
   timeMin: number
   method?: CheckMethod
   slot?: number // hourly 슬롯(분)
@@ -75,6 +87,7 @@ export interface StoredEvent {
 const zones: Zone[] = seedZones.map((z) => ({ ...z }))
 const assignments: StoredAssignment[] = seedAssignments.map((a) => ({ ...a }))
 const events: StoredEvent[] = seedEvents.map((e) => ({ ...e }))
+const dutyProfiles: StoredDutyProfile[] = seedDutyProfiles.map((p) => ({ ...p }))
 const issues: Issue[] = seedIssues.map((i) => ({ ...i }))
 // 교육 이수 — personId 키(사람 단위). 배치가 아니라 사람에 귀속.
 const readiness: Record<string, EducationRecord[]> = Object.fromEntries(
@@ -156,6 +169,10 @@ export function setHazard(id: string, checked: boolean, at: string | null): void
 export const rawZones = (): Zone[] => zones
 export const rawAssignments = (): StoredAssignment[] => assignments
 export const rawEvents = (): StoredEvent[] => events
+export const rawDutyProfiles = (): StoredDutyProfile[] => dutyProfiles
+// 그날의 근태 프로필. 없으면 undefined = 평범하게 나와서 평범하게 일한 날.
+export const dutyProfileOf = (assignmentId: string, date: string): StoredDutyProfile | undefined =>
+  dutyProfiles.find((p) => p.assignmentId === assignmentId && p.date === date)
 export const rawIssues = (): Issue[] => issues
 export const rawNotices = () => seedNotices
 export const deploymentPlan = () => DEPLOYMENT_PLAN
@@ -195,7 +212,9 @@ export function setStaffHoursPerDay(h: number): void {
 export const dailyWageDeduction = () => DAILY_WAGE_DEDUCTION
 export const dailyWageTaxRate = () => DAILY_WAGE_TAX_RATE
 
-export const opsDate = () => SEED_DATE // 운영일(YYYY-MM-DD) — 물품 지급일 등 마스터 기록용
+// 운영일(YYYY-MM-DD) — 물품 지급일·서류 등록일 등 마스터 기록의 스탬프.
+// 시계의 현재 날짜를 따른다: 스크러버를 10/20 로 밀고 물품을 지급하면 10/20 으로 찍혀야 한다.
+export const opsDate = () => getNowDate()
 export const rawVendors = (): StoredVendor[] => vendors
 export const foodParasols = () => FOOD_PARASOLS
 export const findVendor = (id: string): StoredVendor | undefined => vendors.find((v) => v.id === id)
