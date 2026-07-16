@@ -5,7 +5,7 @@ import bgSidebar from '../../assets/bg-sidebar.jpg'
 import logoW from '../../assets/logo-its-w.png'
 
 // 운영본부 콘솔 로그인. 하드코딩 계정(consoleAuth) — 백엔드 인증이 아니다.
-// 등급이 사이드바를 가른다: superAdmin 전체 / client 정산 제외.
+// 등급이 사이드바를 가른다: superAdmin 전체 / client 는 '운영' 묶음 제외.
 
 export default function ConsoleLogin({ onLogin }: { onLogin: (s: ConsoleSession) => void }) {
   const [id, setId] = useState('')

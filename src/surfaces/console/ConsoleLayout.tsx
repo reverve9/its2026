@@ -5,39 +5,11 @@ import { useNowMin } from '../../lib/useLive'
 import { fmtHM } from '../../lib/clock'
 import { useCapture } from '../../lib/capture'
 import { loadConsoleSession, saveConsoleSession, clearConsoleSession } from '../../lib/consoleAuth'
-import type { ConsoleSession, ConsoleRole } from '../../lib/consoleAuth'
+import type { ConsoleSession } from '../../lib/consoleAuth'
+import { overview, groups, visibleTo } from '../../lib/consoleNav'
 import ConsoleLogin from './ConsoleLogin'
 import bgSidebar from '../../assets/bg-sidebar.jpg'
 import logoW from '../../assets/logo-its-w.png'
-
-// superAdminOnly 가 사이드바와 라우트 가드의 단일 출처다(R5).
-// 메뉴에서 숨기기만 하면 URL 을 직접 치면 들어가진다 — 아래 blocked 판정이 같은 배열을 본다.
-type NavItem = { to: string; label: string; end?: boolean; superAdminOnly?: true }
-const overview: NavItem = { to: '/', label: '통합 운영현황', end: true }
-const groups: { title: string; items: NavItem[] }[] = [
-  {
-    title: '실시간 관제',
-    items: [
-      { to: '/people', label: '인력 관리' },
-      { to: '/safety', label: '안전/비상' },
-      { to: '/issues', label: '민원 관리' },
-      { to: '/report', label: '일일 운영 보고' },
-    ],
-  },
-  {
-    // 시간 비의존 마스터 대장 — 스크러버를 밀어도 불변.
-    // 정산도 같은 성격(일일 정산이 아니라 행사 후 일괄)이라 여기 하단에 둔다.
-    // '정산 마감'은 만들지 않았다: 일일 단위로 정산하지 않으므로 마감할 단위가 없다.
-    title: '운영',
-    items: [
-      { to: '/personnel', label: '인력 현황' },
-      { to: '/vendors', label: '업체 등록 현황' },
-      // 발주처(client)에겐 안 보인다. 정산은 우리 원가(일용 지급·원천징수)가 드러나는 화면이고
-      // 발주처 보고 대상은 자원봉사자 실비뿐이다 — 등급이 곧 보고 경계다.
-      { to: '/settlement', label: '정산 산출내역', superAdminOnly: true },
-    ],
-  },
-]
 
 // 텍스처 배경 위 텍스트 — 흰색 계열로 통일하고 위계는 투명도(80~100%)로만 준다.
 // 배경 최악 지점(#226866) 기준 white/80 = 4.8:1 이 AA 하한선. 그 아래로 내리면 미달.
@@ -49,8 +21,6 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
       ? 'bg-white/15 font-semibold text-white before:absolute before:left-1 before:top-1/2 before:h-4 before:w-1 before:-translate-y-1/2 before:rounded-full before:bg-white/90 before:content-[""]'
       : 'font-medium text-white/80 hover:bg-white/10 hover:text-white'
   }`
-
-const visibleTo = (role: ConsoleRole) => (n: NavItem) => !n.superAdminOnly || role === 'superAdmin'
 
 export default function ConsoleLayout() {
   const now = useNowMin()

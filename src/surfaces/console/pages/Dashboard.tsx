@@ -13,6 +13,8 @@ import {
   getAssignments,
 } from '../../../lib/services'
 import { useLive } from '../../../lib/useLive'
+import { canSee } from '../../../lib/consoleNav'
+import { loadConsoleSession } from '../../../lib/consoleAuth'
 import { fmtHM } from '../../../lib/clock'
 import StaffingGapFlow from '../StaffingGapFlow'
 import { PageHeader, Section, LivePill } from '../../../components/layout'
@@ -25,6 +27,9 @@ import type { OpsAlert } from '../../../types'
 
 export default function Dashboard() {
   const [gapFlow, setGapFlow] = useState<{ zoneId: string; zoneName: string } | null>(null)
+  // 이 화면은 세션이 있을 때만 마운트된다(ConsoleLayout 이 없으면 로그인 화면을 낸다).
+  // 로그인·로그아웃은 트리를 통째로 갈아서 렌더 중 읽어도 낡을 수 없다.
+  const role = loadConsoleSession()?.role ?? 'client'
   const kpi = useLive(getKpi)
   const zones = useLive(getZones)
   const alerts = useLive(getAlerts)
@@ -80,19 +85,31 @@ export default function Dashboard() {
         <StatTile label="근무공백" value={kpi.gapAlerts} unit="거점" tone="critical" hint="예비 투입 필요" />
         <StatTile label="투입가능 예비" value={kpi.reserveAvailable} unit="명" tone="ok" />
         <StatTile label={`교대 후 경과`} value={kpi.minsSinceShiftStart} unit="분" hint={`운영 중 ${openZones}/${zones.length} · 이슈 ${openIssues}`} />
-        {/* 교육 이수율 — 미이수가 있으면 인력 현황의 미이수 명단으로 드릴다운. */}
-        <Link
-          to="/personnel?edu=pending"
-          className="rounded-xl transition hover:opacity-80"
-          aria-label={`사전 통합교육 미이수 ${edu.pending}명 명단 보기`}
-        >
+        {/* 교육 이수율 — 미이수가 있으면 인력 현황의 미이수 명단으로 드릴다운.
+            발주처(client)에겐 인력 현황이 없으므로 타일만 남고 링크가 걷힌다 —
+            등급 판정을 여기서 다시 쓰지 않고 사이드바와 같은 배열에 묻는다(R5).
+            그러지 않으면 등급 경계를 옮기는 날 눌러도 되돌려보내지는 타일이 된다. */}
+        {canSee(role, '/personnel') ? (
+          <Link
+            to="/personnel?edu=pending"
+            className="rounded-xl transition hover:opacity-80"
+            aria-label={`사전 통합교육 미이수 ${edu.pending}명 명단 보기`}
+          >
+            <StatTile
+              label="교육 이수율"
+              value={`${edu.rate}%`}
+              tone={edu.pending ? 'warn' : 'ok'}
+              hint={`${edu.done}/${edu.total}명 · 미이수 ${edu.pending}`}
+            />
+          </Link>
+        ) : (
           <StatTile
             label="교육 이수율"
             value={`${edu.rate}%`}
             tone={edu.pending ? 'warn' : 'ok'}
             hint={`${edu.done}/${edu.total}명 · 미이수 ${edu.pending}`}
           />
-        </Link>
+        )}
       </div>
 
       {/* 좌: 거점 상황판 / 우: 경보 + 라이브 */}
