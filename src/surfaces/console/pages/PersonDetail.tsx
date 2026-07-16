@@ -315,6 +315,13 @@ export default function PersonDetailModal({
                 </div>
               </Section>
 
+              {/* ↓ 자원봉사자 항목 셋 — 교육 이수·활동물품·정산 서류. 운영인력에겐 사실 자체가 없다.
+                  가리지 않으면 모달이 '미이수'·'미등록'으로 없는 결손을 말하고, 물품·서류가 토글이라
+                  운영인력에게 실제로 지급·등록까지 된다(getGoodsSummary 는 모수에서 빼므로 조용히 갈린다).
+                  인력 현황 목록이 이 셋을 '—'로 찍는 것과 같은 경계다 — 목록에서 눌러 여는 모달이라
+                  여기서 갈리면 한 흐름 안에서 두 말을 하게 된다. */}
+              {a.kind === '자원봉사자' && (
+                <>
               {/* 교육 이수 — 읽기 전용. 처리는 인력 현황의 일괄 인증에서만. */}
               <div className="mt-5">
                 <Section
@@ -441,6 +448,8 @@ export default function PersonDetailModal({
                   <div className="mt-3 text-caption text-ink-muted">등록일 {payout.registeredAt ?? '—'}</div>
                 </Section>
               </div>
+                </>
+              )}
 
               <p className="mt-4 text-caption text-ink-faint">개인정보 최소수집 · 행사 종료 후 즉시 파기</p>
             </div>

@@ -69,6 +69,12 @@ function GoodsCell({ on, onToggle, label }: { on: boolean; onToggle: () => void;
   )
 }
 
+// 자원봉사자 항목이 아닌 칸 — 교육 이수·활동물품·정산 서류는 셋 다 자원봉사자 항목이다
+// (본공고 3-1 제작·배부 + 실비 지급용 · 사전 통합교육). 운영인력에겐 그 사실 자체가 없다.
+// '미이수'·'미등록'으로 찍으면 화면이 없는 결손을 말하고, 물품은 토글이라 실제로 지급까지 된다
+// — getGoodsSummary 는 운영인력을 모수에서 빼므로 집계는 안 변하고 store 만 조용히 갈린다.
+const NotApplicable = () => <span className="text-ink-faint">—</span>
+
 export default function Personnel() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [kind, setKind] = useState<StaffKind | 'all'>('all')
@@ -464,7 +470,9 @@ export default function Personnel() {
                 </td>
                 <td className="px-3 py-2.5 text-ink-muted">{p.lang.length ? p.lang.join(' · ') : '—'}</td>
                 <td className="px-3 py-2.5">
-                  {hasEducation(p.education, '사전 통합교육') ? (
+                  {!isVol(p) ? (
+                    <NotApplicable />
+                  ) : hasEducation(p.education, '사전 통합교육') ? (
                     <span className="rounded-md bg-ok-soft px-2 py-0.5 text-caption font-semibold text-ok">
                       이수{hasEducation(p.education, '현장교육') ? ' · 현장' : ''}
                     </span>
@@ -473,21 +481,31 @@ export default function Personnel() {
                   )}
                 </td>
                 <td className="px-3 py-2.5 text-center">
-                  <GoodsCell
-                    on={p.goods.jacket}
-                    label={`${p.personName} 바람막이 지급`}
-                    onToggle={() => issueGoods(p.id, { jacket: !p.goods.jacket })}
-                  />
+                  {isVol(p) ? (
+                    <GoodsCell
+                      on={p.goods.jacket}
+                      label={`${p.personName} 바람막이 지급`}
+                      onToggle={() => issueGoods(p.id, { jacket: !p.goods.jacket })}
+                    />
+                  ) : (
+                    <NotApplicable />
+                  )}
                 </td>
                 <td className="px-3 py-2.5 text-center">
-                  <GoodsCell
-                    on={p.goods.bag}
-                    label={`${p.personName} 가방 지급`}
-                    onToggle={() => issueGoods(p.id, { bag: !p.goods.bag })}
-                  />
+                  {isVol(p) ? (
+                    <GoodsCell
+                      on={p.goods.bag}
+                      label={`${p.personName} 가방 지급`}
+                      onToggle={() => issueGoods(p.id, { bag: !p.goods.bag })}
+                    />
+                  ) : (
+                    <NotApplicable />
+                  )}
                 </td>
                 <td className="px-3 py-2.5">
-                  {payoutReady(p.payout) ? (
+                  {!isVol(p) ? (
+                    <NotApplicable />
+                  ) : payoutReady(p.payout) ? (
                     <span className="rounded-md bg-ok-soft px-2 py-0.5 text-caption font-semibold text-ok">등록 완료</span>
                   ) : (
                     <span className="rounded-md bg-warn-soft px-2 py-0.5 text-caption font-semibold text-warn">
