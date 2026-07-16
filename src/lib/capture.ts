@@ -38,8 +38,9 @@ export function useCapture(): boolean {
   return useSyncExternalStore(subscribe, isCapture, isCapture)
 }
 
-// 현재 경로로 아트보드 규격 결정 (/f = 모바일, 그 외 = 콘솔).
+// 현재 경로로 아트보드 규격 결정 (/f 현장앱·/v 방문객앱 = 모바일, 그 외 = 콘솔).
 export function useArtboard(): Artboard {
   const { pathname } = useLocation()
-  return pathname.startsWith('/f') ? MOBILE_ARTBOARD : CONSOLE_ARTBOARD
+  const mobile = pathname.startsWith('/f') || pathname.startsWith('/v')
+  return mobile ? MOBILE_ARTBOARD : CONSOLE_ARTBOARD
 }

@@ -31,6 +31,10 @@ export default function TimeScrubber() {
   // 캡쳐 모드에선 아트보드 오염 방지 위해 스크러버 숨김.
   if (capture) return null
 
+  // 방문객앱(/v)은 공개 발행면 — 시각 파생 상태(출결·경보)가 없어 스크러버가 무의미하고
+  // 헤더·하단탭을 덮기만 한다. 아예 숨긴다. (시각 인지 콘텐츠가 생기면 /f 처럼 하단으로 내릴 것)
+  if (pathname.startsWith('/v')) return null
+
   // 현장앱(/f)에선 헤더를 가리지 않도록 하단으로(서피스 스위처 위). 콘솔은 상단.
   const isField = pathname.startsWith('/f')
   const posCls = isField ? 'bottom-16' : 'top-3'

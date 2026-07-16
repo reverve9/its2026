@@ -1,6 +1,13 @@
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
 import ConsoleLayout from './surfaces/console/ConsoleLayout'
 import FieldLayout from './surfaces/field/FieldLayout'
+import VisitorLayout from './surfaces/visitor/VisitorLayout'
+import VisitorHome from './surfaces/visitor/pages/Home'
+import VisitorAbout from './surfaces/visitor/pages/About'
+import VisitorProgram from './surfaces/visitor/pages/Program'
+import VisitorFood from './surfaces/visitor/pages/Food'
+import VisitorTour from './surfaces/visitor/pages/Tour'
+import VisitorMy from './surfaces/visitor/pages/My'
 import Dashboard from './surfaces/console/pages/Dashboard'
 import People from './surfaces/console/pages/People'
 import Personnel from './surfaces/console/pages/Personnel'
@@ -22,6 +29,7 @@ function SurfaceSwitcher() {
   const items = [
     { to: '/', label: '운영본부 콘솔', end: true },
     { to: '/f', label: '현장 앱' },
+    { to: '/v', label: '방문객 앱' },
   ]
   return (
     <div className="no-print fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 rounded-full border border-line bg-white/95 p-1 shadow-lg backdrop-blur">
@@ -70,6 +78,16 @@ export default function App() {
 
         {/* 현장 모바일 PWA — 역할 분기(봉사자 / 거점관리자) */}
         <Route path="/f" element={<FieldLayout />} />
+
+        {/* 방문객 공개 앱 — 무인증 발행 뷰. 홈(로고)+4탭+마이 */}
+        <Route path="/v" element={<VisitorLayout />}>
+          <Route index element={<VisitorHome />} />
+          <Route path="about" element={<VisitorAbout />} />
+          <Route path="program" element={<VisitorProgram />} />
+          <Route path="food" element={<VisitorFood />} />
+          <Route path="tour" element={<VisitorTour />} />
+          <Route path="my" element={<VisitorMy />} />
+        </Route>
       </Routes>
       </CaptureShell>
       <TimeScrubber />

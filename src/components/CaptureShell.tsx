@@ -52,7 +52,10 @@ export default function CaptureShell({ children }: { children: ReactNode }) {
           콘솔
         </NavLink>
         <NavLink to="/f" className={navCls}>
-          모바일
+          현장
+        </NavLink>
+        <NavLink to="/v" className={navCls}>
+          방문객
         </NavLink>
         <div className="mx-1 h-4 w-px bg-line" />
         <button
