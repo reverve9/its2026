@@ -201,7 +201,7 @@ export default function VolunteerHome({ session, onLogout }: { session: FieldSes
         <div className="card p-4">
           <div className="text-label font-semibold text-ink-strong">내 QR (신분증)</div>
           <p className="mt-1 text-caption text-ink-muted">
-            물품 수령·지시 확인 시 운영인력에게 제시하세요. 출근 체크와는 무관합니다.
+            물품 수령·지시 확인 시 운영인력에게 제시하세요.
           </p>
           <div className="mt-3 grid place-items-center rounded-xl border border-line bg-white py-6">
             <QrCode value={a.id} size={176} />

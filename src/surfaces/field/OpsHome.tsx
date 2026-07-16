@@ -6,6 +6,7 @@ import { getNowMin, fmtHM } from '../../lib/clock'
 import { StatusBadge, Fill } from '../../components/ui'
 import type { FieldSession } from '../../lib/session'
 import { roleLabel } from '../../lib/roleLabel'
+import { EMERGENCY_CONTACTS } from '../../lib/info'
 import type { Coords } from '../../types'
 import type { IssueType, ScanKind } from '../../types'
 import logoW from '../../assets/logo-its-w.png'
@@ -19,10 +20,12 @@ const ISSUE_TYPES: IssueType[] = ['민원', '시설이상', '분실물', '미아
 // 스캔 종류 — QR 은 서명이다. 넷 다 같은 문장이다: "이 사람이, 이 시각에, 여기서, 이걸 받았다".
 const SCAN_KINDS: ScanKind[] = ['대면확인', '현장물품수령', '활동물품수령', '지시인수']
 
+const telHref = (p: string) => `tel:${p.replace(/-/g, '')}`
+
 // 운영인력 현장앱 — 거점관리자 + 현장인력 공용.
 //
 // role 로 화면을 가르지 않는다. zoneId 유무가 카드를 가른다:
-//   공통(전원)      본부 공지 · QR 스캐너 · 이슈 보고
+//   공통(전원)      본부 공지 · QR 스캐너 · 이슈 보고 · 비상연락망
 //   zoneId 있으면 + 거점 헤딩 · 거점 현황 · 내 거점 인력
 //
 // 게이트 안에 남은 둘은 진짜 거점 사실이다(present/quota · 그 거점의 조 명단).
@@ -188,7 +191,7 @@ export default function OpsHome({ session, onLogout }: { session: FieldSession; 
         <div className="card p-4">
           <div className="text-label font-semibold text-ink-strong">QR 스캐너 (서명)</div>
           <p className="mt-1 text-caption text-ink-muted">
-            봉사자의 QR을 찍어 수령·확인 서명을 남깁니다. 출근 체크와는 무관합니다.
+            봉사자의 QR을 찍어 수령·확인 서명을 남깁니다.
           </p>
           <div className="mt-2.5 flex flex-wrap gap-1.5">
             {SCAN_KINDS.map((k) => (
@@ -280,12 +283,26 @@ export default function OpsHome({ session, onLogout }: { session: FieldSession; 
           </>
         )}
 
-        {/* 거점 없는 운영인력(현장운영·슈퍼어드민)은 거점 관제 둘만 빠진다. */}
-        {!zone && (
-          <p className="text-caption leading-snug text-ink-muted">
-            거점 배치가 없어 거점 현황·인력 카드는 표시되지 않습니다.
-          </p>
-        )}
+        {/* 비상연락망 — 공통. 게이트 밖이다: 연락처는 거점 사실이 아니고,
+            거점 없는 현장운영·슈퍼어드민이야말로 본부·상황실에 붙어 움직인다.
+            VolunteerHome 과 같은 EMERGENCY_CONTACTS 를 읽는다 — 두 벌로 갈리면 한쪽만 낡는다. */}
+        <div className="card p-4">
+          <div className="text-label font-semibold text-ink-strong">비상연락망</div>
+          <div className="mt-2 divide-y divide-line-soft">
+            {EMERGENCY_CONTACTS.map((c) => (
+              <a key={c.phone} href={telHref(c.phone)} className="flex items-center gap-2 py-2">
+                <div className="min-w-0 flex-1">
+                  <div className="text-label font-semibold text-ink-strong">{c.label}</div>
+                  {c.note && <div className="text-caption text-ink-muted">{c.note}</div>}
+                </div>
+                <span className="tnum shrink-0 rounded-lg bg-primary-50 px-2.5 py-1 text-caption font-semibold text-primary-700">{c.phone}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+
+        {/* 거점 없는 운영인력(현장운영·슈퍼어드민)은 거점 관제 둘이 그냥 안 뜬다.
+            왜 없는지 화면에 적지 않는다 — 없는 걸 설명하는 건 게이트 로직 해설이지 정보가 아니다. */}
       </div>
 
       {scanning && (
