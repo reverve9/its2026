@@ -6,7 +6,7 @@ import { fmtHM } from '../../lib/clock'
 import { useCapture } from '../../lib/capture'
 import { loadConsoleSession, saveConsoleSession, clearConsoleSession } from '../../lib/consoleAuth'
 import type { ConsoleSession } from '../../lib/consoleAuth'
-import { overview, groups, visibleTo } from '../../lib/consoleNav'
+import { overview, sections, visibleTo } from '../../lib/consoleNav'
 import ConsoleLogin from './ConsoleLogin'
 import bgSidebar from '../../assets/bg-sidebar.jpg'
 import logoW from '../../assets/logo-its-w.png'
@@ -27,6 +27,17 @@ export default function ConsoleLayout() {
   const capture = useCapture()
   const { pathname } = useLocation()
   const [session, setSession] = useState<ConsoleSession | null>(() => loadConsoleSession())
+  // 아코디언 접힘 — 묶음 제목 기준. 초기엔 맨 위 묶음만 펼치고 나머지는 접는다(메뉴가 많다).
+  const [collapsed, setCollapsed] = useState<Set<string>>(
+    () => new Set(sections.flatMap((s) => s.groups).map((g) => g.title).slice(1))
+  )
+  const toggleGroup = (title: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(title)) next.delete(title)
+      else next.add(title)
+      return next
+    })
 
   if (!session) {
     return (
@@ -39,7 +50,8 @@ export default function ConsoleLayout() {
   }
 
   // 메뉴에 없는 화면을 URL 로 직접 들어오면 되돌린다. 사이드바와 같은 배열을 본다.
-  const blocked = groups
+  const blocked = sections
+    .flatMap((s) => s.groups)
     .flatMap((g) => g.items)
     .some((n) => n.superAdminOnly && n.to === pathname && session.role !== 'superAdmin')
   if (blocked) return <Navigate to="/" replace />
@@ -63,27 +75,55 @@ export default function ConsoleLayout() {
           <img src={logoW} alt="강릉 ITS 세계총회 2026" className="h-14 w-auto" />
           <div className="mt-2.5 text-title font-bold tracking-tight text-white">통합운영 플랫폼</div>
         </div>
-        <nav className="mt-1 flex-1 space-y-4 overflow-auto px-3 pb-4">
-          {/* 통합 운영현황 — 묶음 없이 최상단 단독 */}
+        <nav className="mt-1 flex-1 space-y-5 overflow-auto px-3 pb-4">
+          {/* 통합 운영현황 — 갈래 밖 최상단 단독 */}
           <NavLink to={overview.to} end={overview.end} className={navLinkClass}>
             {overview.label}
           </NavLink>
-          {groups
-            .filter((g) => g.items.some(visibleTo(session.role)))
-            .map((g) => (
-            <div key={g.title}>
-              <div className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-white/80">
-                {g.title}
+
+          {/* 최상위 갈래(현장 / 사용자) → 그 아래 묶음은 아코디언 */}
+          {sections.map((section) => {
+            const visGroups = section.groups.filter((g) => g.items.some(visibleTo(session.role)))
+            return (
+              <div key={section.title} className="space-y-1">
+                <div className="px-2 text-label font-bold text-white">{section.title}</div>
+                {visGroups.map((g) => {
+                  const open = !collapsed.has(g.title)
+                  return (
+                    <div key={g.title}>
+                      <button
+                        onClick={() => toggleGroup(g.title)}
+                        className="flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white/70 transition hover:bg-white/10 hover:text-white/90"
+                      >
+                        <span>{g.title}</span>
+                        <svg
+                          viewBox="0 0 12 12"
+                          className={`h-3 w-3 transition-transform ${open ? '' : '-rotate-90'}`}
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden
+                        >
+                          <path d="M3 4.5 L6 7.5 L9 4.5" />
+                        </svg>
+                      </button>
+                      {open && (
+                        <div className="mt-0.5 space-y-0.5">
+                          {g.items.filter(visibleTo(session.role)).map((n) => (
+                            <NavLink key={n.to} to={n.to} end={n.end} className={navLinkClass}>
+                              {n.label}
+                            </NavLink>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
-              <div className="space-y-0.5">
-                {g.items.filter(visibleTo(session.role)).map((n) => (
-                  <NavLink key={n.to} to={n.to} end={n.end} className={navLinkClass}>
-                    {n.label}
-                  </NavLink>
-                ))}
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </nav>
         <div className="border-t border-white/20 px-5 py-3 text-caption text-white/80">
           <div className="flex items-center gap-2">
