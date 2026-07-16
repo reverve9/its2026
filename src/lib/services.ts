@@ -47,6 +47,7 @@ import {
   setHazard,
   addAssignment,
   addVendor,
+  addNotice,
 } from './store'
 import type { StoredAssignment, StoredEvent, SafetyState } from './store'
 import type {
@@ -422,6 +423,17 @@ export async function getNotices(): Promise<Notice[]> {
   return issuedNotices(getNowMin())
 }
 
+// 공지 발령 — 본부→현장 나가는 길(reportIssue 의 반대 방향). 발령 시각은 스토어가 아니라
+// 여기서 getNowMin() 으로 박는다: 공지는 '발령된 것'만 존재하고(issuedNotices) 시각이 곧
+// 의미라, 발령 시점을 데이터 계층에서 확정해야 스크러버를 돌렸을 때 파생이 맞는다.
+export async function postNotice(input: {
+  title: string; body: string; audience: Audience
+}): Promise<Notice> {
+  return addNotice({
+    title: input.title, body: input.body, audience: input.audience, time: fmtHM(getNowMin()),
+  })
+}
+
 // 지금 어느 조가 돌고 있는가(R5·R6) — 전일 상주라 자기 조가 없는 거점관리자가
 // '지금 내 거점의 인력'을 보려면 자기 shift 가 아니라 이걸 기준으로 삼아야 한다.
 export async function getActiveShift(): Promise<Shift> {
@@ -430,16 +442,22 @@ export async function getActiveShift(): Promise<Shift> {
 
 // ── 상황전파 수신자 판정(R5) ─────────────────────────────
 // 축이 비면 그 축은 안 거른다. 축 안은 OR, 축 사이는 AND. 전부 비면 전원.
-// role 이 null 인 사람이 있다 — 슈퍼어드민은 StaffRole 셋 중 어느 것도 아니다.
-// 역할을 지목한 공지는 역할이 없는 사람에게 가지 않는다(거점 지목 공지가 거점 없는 사람에게
-// 안 가는 것과 같은 규칙).
+// role 이 null 인 사람이 슈퍼어드민이다 — StaffRole 셋 중 어느 것도 아니다(로그인 분기와 같은 신원).
+//
+// 구분 축 = roles + admin 한 덩어리(내부 OR). role 로 지목하면 role 없는 사람에게 안 가고,
+// admin 으로 지목하면 슈퍼어드민(role null)에게 간다. 자원봉사자·관리자를 함께 고르면 둘 다 받는다
+// — 둘을 다른 필드에 담되 판정은 OR 로 묶어야 그렇게 된다(따로 AND 로 걸면 교집합=공집합).
 function matchesAudience(
   person: { kind: StaffKind; role: StaffRole | null; zoneId: string | null },
   aud: Audience,
 ): boolean {
   if (aud.kinds?.length && !aud.kinds.includes(person.kind)) return false
-  if (aud.roles?.length && (person.role === null || !aud.roles.includes(person.role))) return false
-  // 거점을 지목한 공지는 거점 없는 인력(현장운영·예비)에게 가지 않는다.
+  if (aud.roles?.length || aud.admin) {
+    const roleHit = person.role !== null && (aud.roles?.includes(person.role) ?? false)
+    const adminHit = aud.admin === true && person.role === null // role null = 슈퍼어드민 신원
+    if (!roleHit && !adminHit) return false
+  }
+  // 거점을 지목한 공지는 거점 없는 인력(현장운영·예비·슈퍼어드민)에게 가지 않는다.
   if (aud.zoneIds?.length && (person.zoneId === null || !aud.zoneIds.includes(person.zoneId))) return false
   return true
 }
@@ -456,11 +474,17 @@ export async function getNoticesFor(assignmentId: string | null): Promise<Notice
   return issuedNotices(getNowMin()).filter((n) => matchesAudience(person, n.audience))
 }
 
+// role '봉사자' 인 사람 = 자원봉사자다. 대상 표기는 '자원봉사자'로 통일한다
+// (공지 작성 화면의 구분 라벨과 발령된 공지 배지가 같은 말을 하도록).
+const roleLabel: Record<StaffRole, string> = { 봉사자: '자원봉사자', 거점관리자: '거점관리자', 현장운영: '현장운영' }
+
 // 수신자 주소를 사람이 읽는 한 줄로 — 콘솔 배지·현장앱 표기 공유.
 export function describeAudience(aud: Audience, zones: Zone[]): string {
   const parts: string[] = []
   if (aud.kinds?.length) parts.push(aud.kinds.join('·'))
-  if (aud.roles?.length) parts.push(aud.roles.join('·'))
+  // 구분 축(역할 + 관리자)은 한 덩어리로 묶어 표기한다 — 판정에서 OR 인 것이 화면에서도 한 칸이다.
+  const 구분 = [...(aud.roles?.map((r) => roleLabel[r]) ?? []), ...(aud.admin ? ['관리자'] : [])]
+  if (구분.length) parts.push(구분.join('·'))
   if (aud.zoneIds?.length) {
     const names = aud.zoneIds.map((id) => zones.find((z) => z.id === id)?.name ?? id)
     parts.push(names.length <= 2 ? names.join('·') : `${names.length}개 거점`)

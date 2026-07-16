@@ -304,6 +304,10 @@ export interface Audience {
   kinds?: StaffKind[]
   roles?: StaffRole[]
   zoneIds?: string[]
+  // 슈퍼어드민(관리자) 수신 여부. role 로 담지 않는 이유: 슈퍼어드민은 StaffRole 셋 중
+  // 어느 것도 아니고(role 을 지어내면 주소 판정이 오염된다 — SUPER_ADMIN 주석), 로그인 분기가
+  // 가르는 그 신원(assignmentId·role 이 null)으로 판정한다. 구분 축(roles + admin)에서 OR.
+  admin?: boolean
 }
 
 export interface Notice {

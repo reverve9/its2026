@@ -8,6 +8,7 @@ import FoodVendors from './surfaces/console/pages/FoodVendors'
 import Settlement from './surfaces/console/pages/Settlement'
 import Safety from './surfaces/console/pages/Safety'
 import Issues from './surfaces/console/pages/Issues'
+import Notices from './surfaces/console/pages/Notices'
 import Report from './surfaces/console/pages/Report'
 import TimeScrubber from './components/TimeScrubber'
 import CaptureShell from './components/CaptureShell'
@@ -57,6 +58,7 @@ export default function App() {
         {/* 데스크탑 운영본부 콘솔 — 5화면 (Phase 2/3에서 실제 화면) */}
         <Route element={<ConsoleLayout />}>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/notices" element={<Notices />} />
           <Route path="/people" element={<People />} />
           <Route path="/personnel" element={<Personnel />} />
           <Route path="/vendors" element={<FoodVendors />} />

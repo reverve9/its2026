@@ -4,7 +4,7 @@
 
 import type {
   Coords, EducationKind, EducationRecord, Employment, FoodVendor, GoodsIssue, Issue,
-  PayoutInfo, ScanEvent, StaffKind, StaffRole, Zone,
+  Notice, PayoutInfo, ScanEvent, StaffKind, StaffRole, Zone,
 } from '../types'
 import { emitChange, getNowDate } from './clock'
 import {
@@ -97,6 +97,9 @@ const events: StoredEvent[] = seedEvents.map((e) => ({ ...e }))
 const dutyProfiles: StoredDutyProfile[] = seedDutyProfiles.map((p) => ({ ...p }))
 const scans: StoredScan[] = seedScans.map((sc) => ({ ...sc }))
 const issues: Issue[] = seedIssues.map((i) => ({ ...i }))
+// 다른 컬렉션은 전부 가변 복제인데 notices 만 시드 상수를 그대로 반환하고 있었다 —
+// 아무도 addNotice 를 안 썼기 때문이다(발령 UI 가 없던 구멍). 이제 쓰는 길이 생겨 복제한다.
+const notices: Notice[] = seedNotices.map((n) => ({ ...n, audience: { ...n.audience } }))
 // 교육 이수 — personId 키(사람 단위). 배치가 아니라 사람에 귀속.
 const readiness: Record<string, EducationRecord[]> = Object.fromEntries(
   Object.entries(seedReadiness).map(([k, v]) => [k, v.map((r) => ({ ...r }))])
@@ -108,6 +111,7 @@ let eventSeq = events.length
 let scanSeq = scans.length
 let issueSeq = issues.length
 let asgSeq = assignments.length
+let noticeSeq = notices.length
 let vendorSeq = vendors.length
 
 // ── 안전 상태 — 운영중단 · 위험요인 점검 ──────────────
@@ -185,7 +189,24 @@ export const rawScans = (): StoredScan[] => scans
 export const hasScanKey = (idempotencyKey: string): boolean =>
   scans.some((s) => s.idempotencyKey === idempotencyKey)
 export const rawIssues = (): Issue[] => issues
-export const rawNotices = () => seedNotices
+export const rawNotices = (): Notice[] => notices
+
+// 공지 발령 — 본부→현장으로 나가는 유일한 경로. 지금까지 시드만 있고 쓰는 곳이 없었다(첫 경로).
+// 멱등키(R4)는 addAssignment·addVendor 처럼 행에서 만든다: 공지엔 우리가 발급한 id 가 없고
+// 폼에서 만들어진 행이라 '무엇이 같은 공지인가'를 데이터로 판정해야 더블서브밋에 두 번 안 쏜다.
+// 같은 시각·같은 제목·본문·같은 대상이면 같은 발령이다.
+const noticeKey = (n: Pick<Notice, 'title' | 'body' | 'time' | 'audience'>): string =>
+  `${n.title}|${n.body}|${n.time}|${JSON.stringify(n.audience)}`
+
+export function addNotice(input: Omit<Notice, 'id'>): Notice {
+  const dup = notices.find((n) => noticeKey(n) === noticeKey(input))
+  if (dup) return dup
+  noticeSeq++
+  const notice: Notice = { ...input, id: `nt-${noticeSeq}` }
+  notices.unshift(notice)
+  emitChange()
+  return notice
+}
 
 // ── 경보 읽음 표식 ──────────────────────────────────────
 // '누가 이 경보를 봤다'는 원시 사실이라 여기 산다. Supabase 로 가면 테이블 하나가 된다.

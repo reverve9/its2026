@@ -18,6 +18,7 @@ export const groups: { title: string; items: NavItem[] }[] = [
   {
     title: '실시간 관제',
     items: [
+      { to: '/notices', label: '공지 및 안내' },
       { to: '/people', label: '인력 관리' },
       { to: '/safety', label: '안전/비상' },
       { to: '/issues', label: '민원 관리' },
