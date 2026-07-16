@@ -5,7 +5,7 @@ import { roleLabel, roleCls } from '../../../lib/roleLabel'
 import type { Assignment, DutyStatus, Shift } from '../../../types'
 import { PageHeader } from '../../../components/layout'
 import {
-  StatusBadge, statusMeta, listNo, usePageState, paginate, Pagination,
+  Th, StatusBadge, statusMeta, listNo, usePageState, paginate, Pagination,
   ActionButton, ListToolbar, ToolbarRow, FilterPills, FilterToggle,
 } from '../../../components/ui'
 import { exportExcel } from '../../../lib/excel'
@@ -127,20 +127,6 @@ export default function People() {
       `인력관리_${getNowDate()}`
     )
 
-  const Th = ({ label, k, align = 'left' }: { label: string; k?: SortKey; align?: 'left' | 'right' | 'center' }) => {
-    const on = k && sort.key === k
-    const alignCls = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
-    return (
-      <th
-        onClick={k ? () => toggleSort(k) : undefined}
-        className={`px-3 py-2.5 font-semibold ${alignCls} ${k ? 'cursor-pointer select-none hover:text-ink-strong' : ''} ${on ? 'text-primary-700' : ''}`}
-      >
-        {label}
-        {on && <span className="ml-0.5">{sort.dir === 1 ? '▲' : '▼'}</span>}
-      </th>
-    )
-  }
-
   return (
     <div>
       <PageHeader
@@ -208,17 +194,17 @@ export default function People() {
         <table className="w-full text-label">
           <thead>
             <tr className="border-b border-line bg-neutral-50 text-caption text-ink-muted">
-              <Th label="No." align="right" />
-              <Th label="조" k="shift" />
-              <Th label="거점" k="zone" />
-              <Th label="이름" k="name" />
-              <Th label="연락처" />
-              <Th label="역할" k="role" />
-              <Th label="출근" k="in" />
-              <Th label="상태" k="status" />
-              <Th label="퇴근" />
-              <Th label="비고 (외국어)" />
-              <Th label="누적 근무" k="work" align="right" />
+              <Th label="No." align="right" sort={sort} onSort={toggleSort} />
+              <Th label="조" k="shift" sort={sort} onSort={toggleSort} />
+              <Th label="거점" k="zone" sort={sort} onSort={toggleSort} />
+              <Th label="이름" k="name" sort={sort} onSort={toggleSort} />
+              <Th label="연락처" sort={sort} onSort={toggleSort} />
+              <Th label="역할" k="role" sort={sort} onSort={toggleSort} />
+              <Th label="출근" k="in" sort={sort} onSort={toggleSort} />
+              <Th label="상태" k="status" sort={sort} onSort={toggleSort} />
+              <Th label="퇴근" sort={sort} onSort={toggleSort} />
+              <Th label="비고 (외국어)" sort={sort} onSort={toggleSort} />
+              <Th label="누적 근무" k="work" align="right" sort={sort} onSort={toggleSort} />
               <th className="w-6" />
             </tr>
           </thead>

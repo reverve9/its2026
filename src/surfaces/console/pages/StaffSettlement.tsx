@@ -3,7 +3,7 @@ import { getStaffSettlement, setStaffWage, setStaffHours } from '../../../lib/se
 import { useLive } from '../../../lib/useLive'
 import type { Employment } from '../../../types'
 import { Section } from '../../../components/layout'
-import { listNo, usePageState, paginate, Pagination } from '../../../components/ui'
+import { listNo, usePageState, paginate, Pagination, ListToolbar, ToolbarRow, FilterPills } from '../../../components/ui'
 import { roleLabel, roleCls } from '../../../lib/roleLabel'
 
 // 운영인력 정산 — 자원봉사자 실비와 성격이 다르다.
@@ -18,6 +18,12 @@ const empCls: Record<Employment, string> = {
   직원: 'bg-info-soft text-info',
   일용: 'bg-primary-50 text-primary-700',
 }
+
+const empFilters: { key: Employment | 'all'; label: string }[] = [
+  { key: 'all', label: '전체' },
+  { key: '직원', label: '직원' },
+  { key: '일용', label: '일용' },
+]
 
 function Tile({ label, value, sub, tone = 'default' }: { label: string; value: string; sub?: string; tone?: 'default' | 'primary' | 'muted' }) {
   const cls = tone === 'primary' ? 'text-primary-600' : tone === 'muted' ? 'text-ink-muted' : 'text-ink-strong'
@@ -133,34 +139,21 @@ export default function StaffSettlement() {
         <Tile label="일용 실수령 소계" value={`${won(st.daylaborNet)}원`} sub={`지급 ${won(st.daylaborGross)} − 원천징수 ${won(st.daylaborWithholding)}`} tone="primary" />
       </div>
 
-      <div className="mb-3 flex items-center gap-2">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="이름 · 배치 · 직무 검색"
-          className="w-full max-w-[200px] rounded-lg border border-line bg-surface px-3 py-1.5 text-label text-ink-strong shadow-sm outline-none transition placeholder:text-ink-faint focus:border-primary-400"
-        />
-        <div className="flex gap-1 rounded-full bg-neutral-100 p-0.5">
-          {([
-            { key: 'all', label: '전체' },
-            { key: '직원', label: '직원' },
-            { key: '일용', label: '일용' },
-          ] as const).map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setEmp(f.key)}
-              className={`rounded-full px-3 py-1 text-label font-semibold transition ${
-                emp === f.key ? 'bg-primary-600 text-white' : 'text-ink-muted hover:text-ink-strong'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-        <div className="ml-auto">
-          <Pagination page={page.page} pages={page.pages} onChange={pg.setPage} />
-        </div>
-      </div>
+      <ListToolbar>
+        <ToolbarRow>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="이름 · 배치 · 직무 검색"
+            className="w-[200px] rounded-lg border border-line bg-surface px-3 py-1.5 text-label text-ink-strong shadow-sm outline-none transition placeholder:text-ink-faint focus:border-primary-400"
+          />
+          <span className="tnum text-caption text-ink-muted">{rows.length}명</span>
+        </ToolbarRow>
+
+        <ToolbarRow right={<Pagination page={page.page} pages={page.pages} onChange={pg.setPage} />}>
+          <FilterPills options={empFilters} value={emp} onChange={setEmp} />
+        </ToolbarRow>
+      </ListToolbar>
 
       <div className="card overflow-hidden">
         <table className="w-full text-label">

@@ -5,6 +5,41 @@ import type { DutyStatus } from '../types'
 // 페이지네이션 적용 화면에선 start+i 를 넘겨 순번이 페이지마다 01 로 되돌아가지 않게 한다.
 export const listNo = (i: number): string => String(i + 1).padStart(2, '0')
 
+// ── 대장 표 헤더 ────────────────────────────────────────
+// 정렬 가능한 <th>. k 를 주면 클릭 정렬 축이 되고, 안 주면 그냥 헤더다(연락처처럼 정렬이 무의미한 칸).
+//
+// ⚠️ 화면 컴포넌트 **안**에서 선언하지 말 것. 렌더마다 새 함수 = 새 타입이라 React 가 매번
+// 다른 컴포넌트로 보고 <th> 를 통째로 언마운트→마운트한다(정렬 화살표를 누를 때마다 헤더 전체가
+// 새로 난다). Personnel·People 이 바이트 동일한 사본을 각자 본문 안에 갖고 있던 게 이 경우였다.
+//
+// sort 를 밖에서 받는 건 그 대가다 — 클로저로 잡으면 다시 화면 안으로 들어가야 한다.
+// K 는 화면마다 다른 SortKey 라 제네릭으로 둔다(sort 에서 추론되므로 k 오타는 여기서 잡힌다).
+export function Th<K extends string>({
+  label,
+  k,
+  align = 'left',
+  sort,
+  onSort,
+}: {
+  label: string
+  k?: K
+  align?: 'left' | 'right' | 'center'
+  sort: { key: K; dir: 1 | -1 }
+  onSort: (k: K) => void
+}) {
+  const on = k && sort.key === k
+  const alignCls = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
+  return (
+    <th
+      onClick={k ? () => onSort(k) : undefined}
+      className={`px-3 py-2.5 font-semibold ${alignCls} ${k ? 'cursor-pointer select-none hover:text-ink-strong' : ''} ${on ? 'text-primary-700' : ''}`}
+    >
+      {label}
+      {on && <span className="ml-0.5">{sort.dir === 1 ? '▲' : '▼'}</span>}
+    </th>
+  )
+}
+
 // ── 페이지네이션 ────────────────────────────────────────
 export const PAGE_SIZE = 20
 

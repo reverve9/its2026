@@ -13,7 +13,7 @@ import { EDUCATION_KINDS } from '../../../types'
 import type { EducationKind, PersonnelRecord, Shift, StaffKind } from '../../../types'
 import { PageHeader } from '../../../components/layout'
 import {
-  listNo, usePageState, paginate, Pagination,
+  Th, listNo, usePageState, paginate, Pagination,
   ActionButton, ImportButton, ListToolbar, ToolbarRow, FilterPills, FilterToggle,
 } from '../../../components/ui'
 import PersonDetailModal from './PersonDetail'
@@ -192,20 +192,6 @@ export default function Personnel() {
     )
     setSelected(new Set())
     setTimeout(() => setToast(''), 3500)
-  }
-
-  const Th = ({ label, k, align = 'left' }: { label: string; k?: SortKey; align?: 'left' | 'right' | 'center' }) => {
-    const on = k && sort.key === k
-    const alignCls = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
-    return (
-      <th
-        onClick={k ? () => toggleSort(k) : undefined}
-        className={`px-3 py-2.5 font-semibold ${alignCls} ${k ? 'cursor-pointer select-none hover:text-ink-strong' : ''} ${on ? 'text-primary-700' : ''}`}
-      >
-        {label}
-        {on && <span className="ml-0.5">{sort.dir === 1 ? '▲' : '▼'}</span>}
-      </th>
-    )
   }
 
   const pct = goods.total ? Math.round((goods.complete / goods.total) * 100) : 0
@@ -438,17 +424,17 @@ export default function Personnel() {
                   className="h-3.5 w-3.5 cursor-pointer accent-primary-600"
                 />
               </th>
-              <Th label="No." align="right" />
-              <Th label="이름" k="name" />
-              <Th label="역할" k="role" />
-              <Th label="조" k="shift" />
-              <Th label="배치 거점" k="zone" />
-              <Th label="연락처" />
-              <Th label="외국어" k="lang" />
-              <Th label="교육 이수" k="edu" />
-              <Th label="바람막이" align="center" />
-              <Th label="가방" align="center" />
-              <Th label="정산 서류" k="payout" />
+              <Th label="No." align="right" sort={sort} onSort={toggleSort} />
+              <Th label="이름" k="name" sort={sort} onSort={toggleSort} />
+              <Th label="역할" k="role" sort={sort} onSort={toggleSort} />
+              <Th label="조" k="shift" sort={sort} onSort={toggleSort} />
+              <Th label="배치 거점" k="zone" sort={sort} onSort={toggleSort} />
+              <Th label="연락처" sort={sort} onSort={toggleSort} />
+              <Th label="외국어" k="lang" sort={sort} onSort={toggleSort} />
+              <Th label="교육 이수" k="edu" sort={sort} onSort={toggleSort} />
+              <Th label="바람막이" align="center" sort={sort} onSort={toggleSort} />
+              <Th label="가방" align="center" sort={sort} onSort={toggleSort} />
+              <Th label="정산 서류" k="payout" sort={sort} onSort={toggleSort} />
               <th className="w-6" />
             </tr>
           </thead>

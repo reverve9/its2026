@@ -6,7 +6,9 @@ import {
 import { useLive } from '../../../lib/useLive'
 import type { Shift } from '../../../types'
 import { PageHeader, Section } from '../../../components/layout'
-import { listNo, usePageState, paginate, Pagination } from '../../../components/ui'
+import {
+  listNo, usePageState, paginate, Pagination, ListToolbar, ToolbarRow, FilterPills, FilterToggle,
+} from '../../../components/ui'
 import StaffSettlement from './StaffSettlement'
 
 // 정산 산출내역 — '이렇게 정산하겠다'는 **산정 방식** 제시 화면(지급 후 집행 실적이 아님).
@@ -21,16 +23,21 @@ import StaffSettlement from './StaffSettlement'
 // 세트 단가·원천징수율·시급은 확정값이 아니라 입력값 — 바꾸면 전 계산이 재전파된다.
 
 const won = (n: number) => n.toLocaleString('ko-KR')
-const kinds = [
+type KindKey = 'volunteer' | 'staff'
+const kinds: { key: KindKey; label: string }[] = [
   { key: 'volunteer', label: '자원봉사자' },
   { key: 'staff', label: '운영인력' },
-] as const
-type KindKey = (typeof kinds)[number]['key']
-const tabs = [
+]
+type TabKey = 'summary' | 'detail'
+const tabs: { key: TabKey; label: string }[] = [
   { key: 'summary', label: '산정 기준' },
   { key: 'detail', label: '개인별 산출' },
-] as const
-type TabKey = (typeof tabs)[number]['key']
+]
+const shiftFilters: { key: Shift | 'all'; label: string }[] = [
+  { key: 'all', label: '전체 조' },
+  { key: 'AM', label: '오전조' },
+  { key: 'PM', label: '오후조' },
+]
 
 function Tile({ label, value, sub, tone = 'default' }: { label: string; value: string; sub?: string; tone?: 'default' | 'primary' | 'warn' }) {
   const cls = tone === 'primary' ? 'text-primary-600' : tone === 'warn' ? 'text-warn' : 'text-ink-strong'
@@ -79,19 +86,11 @@ export default function Settlement() {
         }
       />
 
-      {/* 구분 — 정산 방식도 보고 경계도 다르므로 화면의 1차 축이다. */}
-      <div className="mb-4 flex gap-1 rounded-full bg-neutral-100 p-0.5 w-fit">
-        {kinds.map((k) => (
-          <button
-            key={k.key}
-            onClick={() => setKind(k.key)}
-            className={`rounded-full px-4 py-1.5 text-label font-semibold transition ${
-              kind === k.key ? 'bg-primary-600 text-white' : 'text-ink-muted hover:text-ink-strong'
-            }`}
-          >
-            {k.label}
-          </button>
-        ))}
+      {/* 구분 — 정산 방식도 보고 경계도 다르므로 화면의 1차 축이다.
+          툴바에 넣지 않는 건 이 축만 성격이 다르기 때문이다: 목록을 거르는 게 아니라
+          산정 기준·집계 타일까지 통째로 갈아치운다(운영인력은 화면 자체가 다르다). */}
+      <div className="mb-4 w-fit">
+        <FilterPills options={kinds} value={kind} onChange={setKind} />
       </div>
 
       {kind === 'staff' && <StaffSettlement />}
@@ -171,57 +170,31 @@ export default function Settlement() {
         />
       </div>
 
-      {/* 탭 */}
-      <div className="mb-3 flex items-center gap-2">
-        <div className="flex gap-1 rounded-full bg-neutral-100 p-0.5">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`rounded-full px-3.5 py-1 text-label font-semibold transition ${
-                tab === t.key ? 'bg-primary-600 text-white' : 'text-ink-muted hover:text-ink-strong'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+      <ListToolbar>
+        {/* 검색·건수·결근자는 개인별 산출에만 걸린다 — 산정 기준 탭엔 목록이 없다. */}
         {tab === 'detail' && (
-          <>
+          <ToolbarRow
+            right={
+              <FilterToggle on={absentOnly} onToggle={() => setAbsentOnly((v) => !v)}>
+                결근자
+              </FilterToggle>
+            }
+          >
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="이름 · 거점 검색"
-              className="ml-2 w-full max-w-[200px] rounded-lg border border-line bg-surface px-3 py-1.5 text-label text-ink-strong shadow-sm outline-none transition placeholder:text-ink-faint focus:border-primary-400"
+              className="w-[200px] rounded-lg border border-line bg-surface px-3 py-1.5 text-label text-ink-strong shadow-sm outline-none transition placeholder:text-ink-faint focus:border-primary-400"
             />
-            <div className="flex gap-1 rounded-full bg-neutral-100 p-0.5">
-              {([
-                { key: 'all', label: '전체' },
-                { key: 'AM', label: '오전조' },
-                { key: 'PM', label: '오후조' },
-              ] as const).map((f) => (
-                <button
-                  key={f.key}
-                  onClick={() => setShift(f.key)}
-                  className={`rounded-full px-3 py-1 text-label font-semibold transition ${
-                    shift === f.key ? 'bg-primary-600 text-white' : 'text-ink-muted hover:text-ink-strong'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => setAbsentOnly((v) => !v)}
-              className={`ml-auto rounded-full px-3 py-1.5 text-label font-semibold transition ${
-                absentOnly ? 'bg-primary-600 text-white' : 'bg-surface text-ink-muted shadow-sm hover:text-ink-strong'
-              }`}
-            >
-              결근자
-            </button>
-          </>
+            <span className="tnum text-caption text-ink-muted">{detailRows.length}명</span>
+          </ToolbarRow>
         )}
-      </div>
+
+        <ToolbarRow right={tab === 'detail' && <Pagination page={page.page} pages={page.pages} onChange={pg.setPage} />}>
+          <FilterPills options={tabs} value={tab} onChange={setTab} />
+          {tab === 'detail' && <FilterPills options={shiftFilters} value={shift} onChange={setShift} />}
+        </ToolbarRow>
+      </ListToolbar>
 
       {/* 정산 현황 — 일자별 집행 */}
       {tab === 'summary' && (
@@ -294,9 +267,6 @@ export default function Settlement() {
       {/* 개인별 내역 — 계획일수 ≠ 실근무일수(결근 반영) */}
       {tab === 'detail' && (
        <>
-        <div className="mb-2 flex justify-end">
-          <Pagination page={page.page} pages={page.pages} onChange={pg.setPage} />
-        </div>
         <div className="card overflow-hidden">
           <table className="w-full text-label">
             <thead>
