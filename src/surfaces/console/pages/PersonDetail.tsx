@@ -10,7 +10,7 @@ import type { CheckState, GoodsIssue, PayoutInfo } from '../../../types'
 import { Section } from '../../../components/layout'
 import { StatusBadge, statusMeta } from '../../../components/ui'
 import { fmtHM } from '../../../lib/clock'
-import { toMin, fmtDur, workBreak } from '../../../lib/time'
+import { toMin, fmtDur, workMin } from '../../../lib/time'
 
 // 개인 상세 — 인력 관리(실시간 관제)와 인력 현황(운영 대장)이 공유하는 단일 모달.
 // 한 사람의 진실은 한 곳에 두고, 진입 맥락에 따라 기본 탭만 달리 연다.
@@ -22,7 +22,6 @@ const telHref = (p: string) => `tel:${p.replace(/-/g, '')}`
 
 const slotMeta: Record<CheckState, { label: string; cls: string }> = {
   ok: { label: '정상', cls: 'bg-ok-soft text-ok' },
-  break: { label: '휴게', cls: 'bg-warn-soft text-warn' },
   missed: { label: '누락', cls: 'bg-critical-soft text-critical' },
   absent: { label: '미출근', cls: 'bg-neutral-100 text-ink-faint' },
 }
@@ -106,7 +105,7 @@ export default function PersonDetailModal({
 
   const absent = a?.status === 'absent'
   const endMin = a?.checkedOutAt ? toMin(a.checkedOutAt) : now
-  const { work, brk } = workBreak(log, endMin)
+  const work = workMin(log, endMin)
   const slots = a ? getShiftSlots(a.shift) : []
   const okCount = a?.checks.filter((c) => c === 'ok').length ?? 0
   const dueCount = a?.checks.length ?? 0
@@ -187,9 +186,8 @@ export default function PersonDetailModal({
 
             {/* 본문 */}
             <div className={`overflow-auto p-6 ${tab === 'duty' ? '' : 'hidden'}`}>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <InfoTile label="누적 근무" value={absent ? '—' : fmtDur(work)} tone={absent ? 'default' : 'primary'} />
-                <InfoTile label="누적 휴게" value={absent ? '—' : fmtDur(brk)} />
                 <InfoTile label="체크인" value={a.checkedInAt ?? '미출근'} tone={absent ? 'critical' : 'default'} />
                 <InfoTile label="외국어" value={a.lang?.join(' · ') ?? '없음'} />
               </div>

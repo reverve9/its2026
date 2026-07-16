@@ -42,7 +42,7 @@ export default function VolunteerHome({ session, onLogout }: { session: FieldSes
   const slots = shiftSlotMins(a.shift)
   const dueIdx = slots.reduce((acc, s, i) => (s <= now ? i : acc), -1)
   const currentSlot = dueIdx >= 0 ? slots[dueIdx] : null
-  const slotDone = dueIdx >= 0 && (a.checks[dueIdx] === 'ok' || a.checks[dueIdx] === 'break')
+  const slotDone = dueIdx >= 0 && a.checks[dueIdx] === 'ok'
 
   const doGpsCheckIn = () => {
     if (!('geolocation' in navigator)) {
@@ -172,13 +172,13 @@ export default function VolunteerHome({ session, onLogout }: { session: FieldSes
               {slots.map((s, i) => {
                 const st = a.checks[i]
                 const cls = !st ? 'bg-neutral-50 text-ink-faint ring-1 ring-inset ring-line'
-                  : st === 'ok' ? 'bg-ok-soft text-ok' : st === 'break' ? 'bg-warn-soft text-warn'
+                  : st === 'ok' ? 'bg-ok-soft text-ok'
                   : st === 'missed' ? 'bg-critical-soft text-critical' : 'bg-neutral-100 text-ink-faint'
                 return (
                   <div key={s} className="flex flex-col items-center gap-1">
                     <span className="tnum text-caption text-ink-muted">{fmtHM(s)}</span>
                     <span className={`rounded-md px-2.5 py-1 text-caption font-semibold ${cls}`}>
-                      {!st ? '예정' : st === 'ok' ? '완료' : st === 'break' ? '휴게' : st === 'missed' ? '누락' : '—'}
+                      {!st ? '예정' : st === 'ok' ? '완료' : st === 'missed' ? '누락' : '—'}
                     </span>
                   </div>
                 )

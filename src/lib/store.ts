@@ -57,14 +57,16 @@ export interface StoredAssignment {
 
 // ── 라이브 근태 프로필(날짜별) ──────────────────────────
 // 배치(위 StoredAssignment)는 '현황'이라 행사 5일 고정 — 날짜를 갖지 않는다.
-// 미출근·휴게·이동은 그날그날의 사실이라 여기 얹는다. 이전엔 이 셋이 배치 필드로 붙어 있어서
+// 미출근은 그날그날의 사실이라 여기 얹는다. 이전엔 배치 필드로 붙어 있어서
 // 날짜 축이 생기는 순간 '어제도 똑같은 3명이 미출근'이 되는 구조였다.
+//
+// ⚠️ breaks(휴게) · moving(이동) 폐기 — 되살리지 말 것. 근거는 types.ts 의 DutyStatus.
+// 남은 게 noShow 하나뿐이라 이 테이블이 얇아 보이지만, 날짜를 타는 근태 사실이 더 생기면
+// 여기가 그 자리다(배치에 붙이면 날짜 축이 다시 깨진다).
 export interface StoredDutyProfile {
   assignmentId: string
   date: string
   noShow?: boolean // 미출근(이벤트 없음)
-  breaks?: { startMin: number; endMin: number; note?: string }[]
-  moving?: { startMin: number; endMin: number; note?: string }
 }
 
 // 먹거리 입점업체 등록 레코드 — 시간 비의존 마스터(파생 없음 → FoodVendor 와 동형).

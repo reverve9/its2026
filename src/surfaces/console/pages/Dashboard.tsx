@@ -75,7 +75,7 @@ export default function Dashboard() {
       {/* KPI 스트립 — 교대 인지형 */}
       <div className="mb-5 grid grid-cols-7 gap-3">
         <StatTile label="배치 인원" value={kpi.total} unit="명" hint="오전 55 · 오후 55" />
-        <StatTile label={`${shiftKo} 근무`} value={`${kpi.present}/${kpi.expected}`} unit="명" tone="primary" hint={`근무 ${kpi.onDuty} · 휴게이동 ${kpi.breakOrMoving}`} />
+        <StatTile label={`${shiftKo} 근무`} value={`${kpi.present}/${kpi.expected}`} unit="명" tone="primary" />
         <StatTile label="미출근" value={kpi.absent} unit="명" tone="critical" hint="예비 대체 검토" />
         <StatTile label="근무공백" value={kpi.gapAlerts} unit="거점" tone="critical" hint="예비 투입 필요" />
         <StatTile label="투입가능 예비" value={kpi.reserveAvailable} unit="명" tone="ok" />

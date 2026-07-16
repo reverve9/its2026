@@ -17,12 +17,18 @@ export type ZoneStatus = 'before' | 'open' | 'closed' | 'suspended'
 export type Shift = 'AM' | 'PM'
 
 // 근태 상태 — services가 현재시각 기준으로 파생.
-// before: 근무 시작 전 대기 / on: 근무중 / break: 휴게 / moving: 이동
-// off: 근무 종료(퇴근완료) / absent: 미출근
-export type DutyStatus = 'before' | 'on' | 'break' | 'moving' | 'off' | 'absent'
+// before: 근무 시작 전 대기 / on: 근무중 / off: 근무 종료(퇴근완료) / absent: 미출근
+//
+// ⚠️ 폐기: 'break'(휴게) · 'moving'(이동) — 되살리지 말 것.
+// 2교대(오전 4h · 오후 4h)로 확정되면서 휴게가 설 자리가 없어졌다. 4시간 근무에 휴게를 그리면
+// 근무시간이 얼마인지가 모호해지고(4h 중 30분이 휴게면 실근무 3.5h?), 실비 24,000원은
+// 교대근무자 1인 1일 기준이라 휴게로 갈라지지 않는다 — 화면이 정산과 다른 말을 하게 된다.
+// 이동은 거점 고정 배치라 애초에 없다(봉사자는 자기 거점에 서 있고, 거점 간 이동은 배치 변경이다).
+export type DutyStatus = 'before' | 'on' | 'off' | 'absent'
 
-// 정시(1h) 체크: 정상·누락(확인필요=soft)·휴게면제·미출근
-export type CheckState = 'ok' | 'missed' | 'break' | 'absent'
+// 정시(1h) 체크: 정상 · 누락(확인필요=soft) · 미출근
+// ⚠️ 폐기: 'break'(휴게면제) — 휴게가 없어졌으므로 면제할 것도 없다.
+export type CheckState = 'ok' | 'missed' | 'absent'
 
 export interface Coords {
   lat: number
@@ -70,6 +76,10 @@ export interface Assignment {
   lang?: string[] // 가능 외국어
   checkedInAt?: string // HH:mm 출근(파생 — 체크인 이벤트 최초 시각)
   checkedOutAt?: string // HH:mm 퇴근(파생 — 지났을 때만 채움)
+  // 출근 지연(분) — 파생. 예정 출근 대비 실제 체크인이 늦은 만큼. 정시·조퇴 시 undefined.
+  // +1~4 = 유예 내(지각 아님, 봐주지만 기록은 남는다) · +5 이상 = 지각(LATE_GRACE).
+  // 판정을 화면에 두지 않고 여기 담는 이유: 목록과 상세가 같은 수를 봐야 한다(R5).
+  lateMin?: number
   phone: string // 연락처 — 즉각 소통(정시 체크 누락·근무공백 대응)
   checks: CheckState[] // 파생 — 조별 슬롯 정렬, 현재시각까지 지난 슬롯만
   standby?: Coords // 예비인력 대기 위치(근무공백 대응 거리 산정용)
@@ -212,7 +222,7 @@ export interface ScanEvent {
 // 개인 근퇴 타임라인 (출결 + 상태전환 — 개인 상세용 파생)
 export interface DutyLogEntry {
   time: string // HH:mm
-  label: string // '출근 체크인' · '휴게 시작' · '휴게 종료·복귀' · '이동' · '퇴근'
+  label: string // '출근 체크인' · '퇴근' (휴게·이동 폐기)
   status: DutyStatus // 이 이벤트 이후 상태
   note?: string
 }
@@ -322,9 +332,9 @@ export interface KpiSummary {
   amExpected: number // 오전조 정원(55)
   pmExpected: number // 오후조 정원(55)
   expected: number // 현재 조 정원
-  present: number // 현재 조 출근(근무·휴게·이동)
-  onDuty: number // 현재 조 근무중('on')
-  breakOrMoving: number // 현재 조 휴게·이동
+  present: number // 현재 조 근무중('on')
+  // ⚠️ 폐기: onDuty · breakOrMoving — 휴게·이동이 없어지면서 present 와 같은 수가 됐다.
+  // 같은 수를 세 칸에 담으면 화면이 셋을 다른 사실처럼 보여준다.
   absent: number // 현재 조 미출근
   gapAlerts: number // 근무공백 경보 거점 수(운영 중 기준)
   reserveAvailable: number // 투입 가능 예비인력

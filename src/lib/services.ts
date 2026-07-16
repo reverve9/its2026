@@ -47,7 +47,7 @@ import {
   setSuspension,
   setHazard,
 } from './store'
-import type { StoredAssignment, StoredEvent, StoredDutyProfile, SafetyState } from './store'
+import type { StoredAssignment, StoredEvent, SafetyState } from './store'
 import type {
   Zone,
   Assignment,
@@ -92,6 +92,31 @@ const SLOTS: Record<Shift, number[]> = {
 }
 const GRACE = 15 // 출근 유예(분). 예정 출근 + GRACE 지나도 미체크 = 미출근.
 
+// 지각 기준(분) — 출근 체크가 예정보다 이만큼 이상 늦으면 지각.
+// 시계가 분 단위(nowMin)라 +4 까지는 지각이 아니고 +5 부터 지각 = '4분 59초까지는 봐준다'.
+// 봐주는 구간(+1~4)도 lateMin 으로 남긴다 — 봐줬다는 사실 자체가 기록이어야 하기 때문이다.
+// 경고성이라 상태(DutyStatus)는 안 건드린다: 지각자도 근무중이다. 축을 섞으면 관제가 깨진다.
+// GRACE(15)와 다른 축이다 — GRACE 는 '안 온 사람'(미출근) 판정이고 이건 '늦게 온 사람' 판정이다.
+const LATE_GRACE = 5
+
+// 지각인가 — 화면은 이걸 쓴다. 각 화면이 `>= 5` 를 다시 쓰면 기준이 조용히 갈린다.
+// lateMin 이 있는데 isLate 가 false = '늦었지만 봐준' 구간(+1~4). 그 상태도 화면에 남긴다.
+export const isLate = (lateMin?: number): boolean => (lateMin ?? 0) >= LATE_GRACE
+// 정시(1h) 체크 유예(분) — '4분 지각까지는 봐준다'. 슬롯은 정각 + 이 유예가 지나야 판정 대상이 된다.
+//
+// 왜 필요한가: 유예가 없으면(옛 `slot > now`) 17:00 정각에 17시 슬롯이 곧장 '누락'으로 찍혔다가
+// 몇 분 뒤 이벤트가 도착하면 '정상'으로 뒤집힌다. 그 사이 경보(getAlerts)까지 울려서
+// 관제가 멀쩡한 사람을 쫓게 된다. 사람은 정각에 맞춰 누르지 못한다.
+//
+// 왜 5인가: 시드가 정시 체크 이벤트를 정각+0~4분에 만든다 — 관측된 도착 폭이 4분이고,
+// 5는 그 폭을 덮는 최소값이다. 더 늘리면 진짜 누락의 발견이 그만큼 늦어진다.
+// 시계가 분 단위(nowMin)라 정각+4분까지는 판정하지 않고 정각+5분에 판정한다
+// = '4분 59초까지 봐준다'. RFP 에 정시체크 규칙 자체가 없으므로 이건 우리 설계 선택이다.
+//
+// ⚠️ 유예는 판정을 미룰 뿐 결과를 바꾸지 않는다 — 늦게 눌렀다는 근거(이벤트의 timeMin)는
+// 그대로 남고, 유예가 지난 뒤의 '누락' 집계는 유예가 없을 때와 같다(verify-grace 가 이걸 지킨다).
+const CHECK_GRACE = 5
+
 const activeShiftAt = (now: number): Shift => (now < WIN.PM.start ? 'AM' : 'PM')
 export const shiftLabel = (s: Shift): string => (s === 'AM' ? '오전조' : '오후조')
 export function getShiftSlots(s: Shift): string[] {
@@ -105,10 +130,6 @@ export const shiftWindow = (s: Shift) => WIN[s]
 // derive·getDutyLog 가 전부 여기를 지난다.
 const eventsOf = (id: string): StoredEvent[] =>
   rawEvents().filter((e) => e.assignmentId === id && e.date === getNowDate())
-const inWindow = (w?: { startMin: number; endMin: number }, t?: number) =>
-  !!w && t !== undefined && t >= w.startMin && t < w.endMin
-const inBreak = (p: StoredDutyProfile | undefined, t: number) =>
-  (p?.breaks ?? []).some((b) => inWindow(b, t))
 
 // 원시 배치(현황) → 현재 날짜·시각 기준 도메인 Assignment(상태·checks·출퇴근 파생).
 //
@@ -164,16 +185,13 @@ function derive(a: StoredAssignment, now: number): Assignment {
   if (prof?.noShow || (!checkedIn && now >= a.plannedInMin + GRACE)) status = 'absent'
   else if (!checkedIn) status = 'before'
   else if (checkedOut || now >= win.end) status = 'off'
-  else if (inBreak(prof, now)) status = 'break'
-  else if (inWindow(prof?.moving, now)) status = 'moving'
   else status = 'on'
 
-  // checks — 조 슬롯 중 현재 시각까지 지난(due) 것만. 미래 슬롯은 미포함(개인상세가 '예정'으로 표시).
+  // checks — 조 슬롯 중 유예까지 지난(due) 것만. 아직인 슬롯은 미포함(개인상세가 '예정'으로 표시).
   const checks: CheckState[] = []
   for (const slot of SLOTS[a.shift]) {
-    if (slot > now) break
+    if (slot + CHECK_GRACE > now) break
     if (status === 'absent') { checks.push('absent'); continue }
-    if (inBreak(prof, slot)) { checks.push('break'); continue }
     const hit = evs.some((e) => e.kind === 'hourly' && e.slot === slot && e.timeMin <= now)
     checks.push(hit ? 'ok' : checkedIn ? 'missed' : 'absent')
   }
@@ -184,13 +202,17 @@ function derive(a: StoredAssignment, now: number): Assignment {
     date, isReserve: a.isReserve, status, lang: a.lang, phone: a.phone,
     checkedInAt: checkedIn ? fmtHM(checkinEv!.timeMin) : undefined,
     checkedOutAt: checkedOut ? fmtHM(checkoutEv!.timeMin) : undefined,
+    // 늦게 온 만큼만 담는다 — 일찍/정시(0 이하)는 undefined 로 둬야 화면이 '지연 0분'을 안 찍는다.
+    lateMin: checkedIn && checkinEv!.timeMin > a.plannedInMin ? checkinEv!.timeMin - a.plannedInMin : undefined,
     checks,
     standby: a.standby, goods: a.goods,
   }
 }
 
 const roster = (now: number): Assignment[] => rawAssignments().map((a) => derive(a, now))
-const isPresent = (s: DutyStatus) => s === 'on' || s === 'break' || s === 'moving'
+// 출근해서 자리에 있는가. 휴게·이동 폐기로 'on' 하나만 남았다 — 함수는 유지한다:
+// 호출부가 8곳이고, 상태가 다시 늘면 여기 한 곳만 고치면 된다.
+const isPresent = (s: DutyStatus) => s === 'on'
 
 // 거점 present/status 파생.
 // quota 는 '자원봉사자 정원'이므로 present 도 자원봉사자만 센다 — 거점관리자(운영인력)를 같이 세면
@@ -358,15 +380,12 @@ export async function getDutyLog(id: string): Promise<DutyLogEntry[]> {
       entries.push({ time: fmtHM(e.timeMin), label: '퇴근', status: 'off' })
     else if (e.kind === 'audit')
       entries.push({ time: fmtHM(e.timeMin), label: e.anomaly ? '순회 감사 — 불일치' : '순회 감사 — 정위치 확인', status: 'on', note: e.anomaly })
-    else
-      entries.push({ time: fmtHM(e.timeMin), label: `정시(1h) 체크 ${fmtHM(e.slot ?? e.timeMin)}`, status: 'on' })
+    // 'hourly' 는 담지 않는다 — 바로 위 '정시(1h) 체크' 섹션이 슬롯별 정상/누락을 이미 보여준다.
+    // 타임라인은 근퇴(출근·휴게·이동·퇴근)의 축이고 정시체크는 그 축의 상태전환이 아니다.
+    // 4개 슬롯이 'on' 으로 줄줄이 서면 타임라인이 같은 말을 네 번 하면서 진짜 전환을 묻는다.
+    // 유예(CHECK_GRACE)의 근거로 남아야 하는 건 출근 시각이다.
+    // ⚠️ workBreak 은 영향 없다 — hourly 는 전부 status:'on' 이라 앞뒤 'on' 구간에 합쳐질 뿐이다.
   }
-  for (const b of prof?.breaks ?? []) {
-    if (b.startMin <= now) entries.push({ time: fmtHM(b.startMin), label: '휴게 시작', status: 'break', note: b.note })
-    if (b.endMin <= now) entries.push({ time: fmtHM(b.endMin), label: '휴게 종료·복귀', status: 'on' })
-  }
-  if (prof?.moving && prof.moving.startMin <= now)
-    entries.push({ time: fmtHM(prof.moving.startMin), label: '거점 간 이동', status: 'moving', note: prof.moving.note })
   return entries.sort((x, y) => hm(x.time) - hm(y.time))
 }
 
@@ -487,14 +506,9 @@ export async function computeCheckCompliance(): Promise<CheckComplianceItem[]> {
   return out
 }
 
-// 충원율(현재 조) — present / expected.
-export async function computeFillRate(): Promise<number> {
-  const now = getNowMin()
-  const shift = activeShiftAt(now)
-  const list = roster(now).filter((a) => !a.isReserve && a.shift === shift)
-  const present = list.filter((a) => isPresent(a.status)).length
-  return list.length ? Math.round((present / list.length) * 100) : 0
-}
+// ⚠️ 폐기: computeFillRate — 충원율(현재 조). 소비자가 처음부터 0이었다.
+// 게다가 운영인력이 섞여 모수가 오염돼 있었다(kind 를 안 갈랐다) — 화면에 붙었으면 거짓말을 했을 것이다.
+// 충원율이 다시 필요하면 kind === '자원봉사자' 를 걸고 새로 쓸 것. 이 몸통을 되살리지 말 것.
 
 // 실비 — RFP 3-1: 1인당(교대근무자별) 24,000원. 이 단가에 지급물품 대금이 '포함'된다.
 // 따라서 물품은 총액에 더하는 게 아니라 총액에서 빼낸다(총액 고정, 내부 구성만 이동).
@@ -754,8 +768,6 @@ export async function getKpi(): Promise<KpiSummary> {
     pmExpected: nonReserve.filter((a) => a.shift === 'PM').length,
     expected: cur.length,
     present: cur.filter((a) => isPresent(a.status)).length,
-    onDuty: cur.filter((a) => a.status === 'on').length,
-    breakOrMoving: cur.filter((a) => a.status === 'break' || a.status === 'moving').length,
     absent: cur.filter((a) => a.status === 'absent').length,
     gapAlerts: gaps.length,
     reserveAvailable: list.filter((a) => a.isReserve && !a.zoneId).length,

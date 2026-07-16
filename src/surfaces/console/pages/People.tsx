@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { getAssignments, getZones } from '../../../lib/services'
+import { getAssignments, getZones, isLate } from '../../../lib/services'
 import { useLive, useNowMin } from '../../../lib/useLive'
 import { roleLabel, roleCls } from '../../../lib/roleLabel'
 import type { Assignment, DutyStatus, Shift } from '../../../types'
@@ -11,8 +11,6 @@ import PersonDetailModal from './PersonDetail'
 const statusFilters: { key: DutyStatus | 'all'; label: string }[] = [
   { key: 'all', label: '전체' },
   { key: 'on', label: '근무중' },
-  { key: 'break', label: '휴게' },
-  { key: 'moving', label: '이동' },
   { key: 'off', label: '퇴근' },
   { key: 'absent', label: '미출근' },
 ]
@@ -245,7 +243,26 @@ export default function People() {
                       {roleLabel(a.role)}
                     </span>
                   </td>
-                  <td className="tnum px-3 py-2.5 text-ink-muted">{a.checkedInAt ?? '—'}</td>
+                  {/* 체크인 시각 + 지연 배지. 지각(+5 이상)은 경고색, 유예 내(+1~4)는 중립 —
+                      '늦었지만 봐줬다'는 사실도 기록이라 지우지 않는다. 판정은 services 의 isLate(R5). */}
+                  <td className="tnum px-3 py-2.5 text-ink-muted">
+                    {a.checkedInAt ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        {a.checkedInAt}
+                        {a.lateMin !== undefined && (
+                          <span
+                            className={`rounded-md px-1.5 py-0.5 text-caption font-semibold ${
+                              isLate(a.lateMin) ? 'bg-critical-soft text-critical' : 'bg-neutral-100 text-ink-muted'
+                            }`}
+                          >
+                            {isLate(a.lateMin) ? `지각 ${a.lateMin}분` : `+${a.lateMin}분`}
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
                   <td className="px-3 py-2.5"><StatusBadge status={a.status} /></td>
                   <td className="tnum px-3 py-2.5 text-ink-muted">{a.checkedOutAt ?? '—'}</td>
                   <td className="px-3 py-2.5 text-ink-muted">{a.lang?.join(' · ') ?? '—'}</td>

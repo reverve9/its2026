@@ -160,9 +160,20 @@ export const DAILY_WAGE_TAX_RATE = 2.97
 // 시드가 지어낸 우연이 생긴다. 지난 날의 미출근은 absentDays(마스터)에서 유도한다(pastNoShow).
 const NOSHOW = new Set(['z-jumunjin|PM|0', 'z-jumunjin|PM|1', 'z-gyeongpo|PM|0']) // 오후조 미출근 3명 → 근무공백 2거점
 const PM_MISSED = new Set(['z-info|PM|2']) // 출근했으나 14:00 정시체크 누락 → soft 경보
-const PM_BREAK = new Set(['z-food|PM|1']) // 오후 휴게 로테이션 중
-const PM_MOVING = new Set(['z-photo|PM|1']) // 거점 간 이동 중
+// ⚠️ 폐기: PM_BREAK(휴게) · PM_MOVING(이동) — 되살리지 말 것. 근거는 types.ts 의 DutyStatus.
 const AM_MISSED = new Set(['z-info|AM|3']) // 오전조 13:00 정시체크 누락(이력)
+
+// 출근 지연 — (키 → 예정 출근 대비 +분). 시드가 결근(NOSHOW)은 모델링하면서 지각은 안 해서
+// 313건이 전부 정시/일찍이었다. 결근보다 흔한 게 지각인데 그게 없는 건 비현실적이다.
+// LATE_GRACE(5) 경계를 사이에 두고 양쪽을 심는다 — 규칙이 화면에서 보이려면 둘 다 있어야 한다.
+//   +1~4 = 유예 내(지각 아님, 봐주지만 기록은 남는다) · +5 이상 = 지각
+const LATE = new Map<string, number>([
+  ['z-gyeongpo|PM|2', 9], // 지각 — 경포 오후조
+  ['z-market|AM|1', 6], // 지각 — 중앙시장 오전조
+  ['z-anmok|PM|3', 5], // 지각 — 안목, 경계값(정확히 +5 = 지각)
+  ['z-info|AM|1', 4], // 유예 내 — 경계값(+4 = 봐준다). 14:04 는 지각이 아니다
+  ['z-gangmun|PM|1', 2], // 유예 내
+])
 
 const key = (zoneId: string, shift: 'AM' | 'PM', idx: number | 'mgr') => `${zoneId}|${shift}|${idx}`
 
@@ -227,9 +238,13 @@ function seedDutyEvents(a: StoredAssignment, z: Zone, g: number, k: string, date
   // 시각 변주에 날짜를 섞는다 — 안 그러면 3일이 초 단위까지 똑같아 복붙 티가 난다.
   const j = g + SEED_DATES.indexOf(date as (typeof SEED_DATES)[number]) * 3
 
+  // 지각은 오늘만 심는다 — 지난 이틀에 그대로 적용하면 '3일 내리 같은 사람이 지각'이라는
+  // 시드가 지어낸 우연이 된다(NOSHOW 와 같은 이유, §157 주석).
+  const lateMin = isToday ? LATE.get(k) : undefined
+
   if (a.shift === 'AM') {
     // 오전조: 출근(09:50~09:58, 첫 슬롯 前) → 정시 10·11·12·13 → 퇴근(13:58~14:06)
-    pushEvent(a, 'checkin', date, H(9, 50) + (j % 9), { gps: gps && nearby(z.coords, j + 1) })
+    pushEvent(a, 'checkin', date, lateMin ? H(10) + lateMin : H(9, 50) + (j % 9), { gps: gps && nearby(z.coords, j + 1) })
     for (const slot of AM_SLOTS) {
       if (isToday && AM_MISSED.has(k) && slot === H(13)) continue // 13:00 누락(이력)
       pushEvent(a, 'hourly', date, slot + (j % 4), { slot, gps: gps && nearby(z.coords, j + slot) })
@@ -241,7 +256,7 @@ function seedDutyEvents(a: StoredAssignment, z: Zone, g: number, k: string, date
       isToday && k === 'z-market|PM|1'
         ? `지오펜스 경계(${z.geofenceRadius}m) 근접 — 이상치 기록(차단 아님)`
         : undefined
-    pushEvent(a, 'checkin', date, H(13, 52) + (j % 9), { gps: gps && nearby(z.coords, j + 2), anomaly })
+    pushEvent(a, 'checkin', date, lateMin ? H(14) + lateMin : H(13, 52) + (j % 9), { gps: gps && nearby(z.coords, j + 2), anomaly })
     for (const slot of PM_SLOTS) {
       if (isToday && slot > H(14)) break // 오늘은 14:20 — 15시 이후는 아직 오지 않은 슬롯
       if (isToday && PM_MISSED.has(k) && slot === H(14)) continue
@@ -285,16 +300,6 @@ for (const z of zones) {
           dutyProfiles.push({ assignmentId: a.id, date, noShow: true })
           continue
         }
-        if (date === SEED_DATE && PM_BREAK.has(k))
-          dutyProfiles.push({
-            assignmentId: a.id, date,
-            breaks: [{ startMin: H(14, 8), endMin: H(14, 40), note: '오후 휴게 로테이션' }],
-          })
-        if (date === SEED_DATE && PM_MOVING.has(k))
-          dutyProfiles.push({
-            assignmentId: a.id, date,
-            moving: { startMin: H(14, 12), endMin: H(14, 32), note: '포토존 → 행사지원구역 지원' },
-          })
         seedDutyEvents(a, z, gid, k, date)
       }
     }

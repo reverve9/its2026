@@ -104,8 +104,6 @@ export const statusMeta: Record<
 > = {
   before: { label: '대기', dot: 'bg-neutral-400', text: 'text-ink-muted', bg: 'bg-neutral-100' },
   on: { label: '근무중', dot: 'bg-ok', text: 'text-ok', bg: 'bg-ok-soft' },
-  break: { label: '휴게', dot: 'bg-warn', text: 'text-warn', bg: 'bg-warn-soft' },
-  moving: { label: '이동', dot: 'bg-info', text: 'text-info', bg: 'bg-info-soft' },
   off: { label: '퇴근', dot: 'bg-ink-faint', text: 'text-ink-faint', bg: 'bg-neutral-100' },
   absent: { label: '미출근', dot: 'bg-critical', text: 'text-critical', bg: 'bg-critical-soft' },
 }

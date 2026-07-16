@@ -4,13 +4,15 @@ export default {
   theme: {
     extend: {
       // ── 폰트 역할 (웨이트는 컴포넌트에서 결정) ─────────────────
+      // 셀프호스팅(public/fonts) — src/index.css 의 @font-face 와 여기가 짝이다.
+      // 폰트를 추가하면 양쪽을 같이 고쳐야 한다. 한쪽만 고치면 조용히 fallback 으로 떨어진다.
       fontFamily: {
-        // 국문 타이틀 — Paperlogy(개성 있는 모던 지오메트릭)
-        title: ['Paperlogy', 'Pretendard Variable', 'Pretendard', 'sans-serif'],
-        // 본문·서브·UI 기본 — Pretendard
-        sans: ['Pretendard Variable', 'Pretendard', 'system-ui', 'sans-serif'],
-        // 영문 타이틀·디스플레이 — Raleway (Thin·자간 벌려 사용)
-        latin: ['Raleway', 'Pretendard Variable', 'sans-serif'],
+        // 국문 타이틀 — Paperlogy(개성 있는 모던 지오메트릭). 500·600 만 로딩한다.
+        title: ['Paperlogy', 'Pretendard Variable', 'sans-serif'],
+        // 본문·서브·UI 기본 — Pretendard Variable(45~920 가변)
+        sans: ['Pretendard Variable', 'system-ui', 'sans-serif'],
+        // ⚠️ 폐기: latin(Raleway) — 사용처가 0인데 CDN 에서 9개 웨이트를 받고 있었다.
+        // 토큰만 남기면 없는 폰트를 가리키게 되므로 같이 지웠다. 되살리지 말 것.
       },
       // ── 컬러 v4 (딥 틸그린 · 라이트 단일, 다크 없음) ───────────
       colors: {

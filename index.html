@@ -3,8 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="stylesheet" as="style" crossorigin
-      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+    <!-- 폰트는 src/index.css 가 public/fonts 에서 셀프호스팅한다(CDN 제거).
+         여기 있던 Pretendard static CDN 은 Variable 과 중복이라 같이 걷어냈다. -->
+    <link rel="preload" as="font" type="font/woff2" crossorigin
+      href="/fonts/PretendardVariable.woff2" />
     <title>ITS 부대행사 자원봉사 운영 관제</title>
   </head>
   <body>
