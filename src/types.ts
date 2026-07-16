@@ -323,6 +323,10 @@ export interface OpsAlert {
   zoneName: string
   message: string
   gapZoneId?: string // 근무공백 경보면 대상 거점 id — 예비 투입 액션에 사용
+  // 읽음 표식의 키 = id + 내용. id 만으로는 안 된다 — 경보는 파생 판정이라 id 가 고정인 채
+  // 내용이 자란다(store.markAlertsRead 주석). 내용이 바뀌면 키가 바뀌어 다시 안 읽음이 된다.
+  readKey: string
+  read: boolean
 }
 
 // 교대 인지형 KPI 요약 — 대시보드 스트립.

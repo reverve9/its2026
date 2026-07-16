@@ -11,6 +11,7 @@ import {
   getEducationSummary,
   getRecentScans,
   getAssignments,
+  markAlertsRead,
 } from '../../../lib/services'
 import { useLive } from '../../../lib/useLive'
 import { canSee } from '../../../lib/consoleNav'
@@ -18,12 +19,17 @@ import { loadConsoleSession } from '../../../lib/consoleAuth'
 import { fmtHM } from '../../../lib/clock'
 import StaffingGapFlow from '../StaffingGapFlow'
 import { PageHeader, Section, LivePill } from '../../../components/layout'
-import { StatTile } from '../../../components/ui'
+import { StatTile, Pagination, usePageState, paginate } from '../../../components/ui'
 import { ZoneMap } from '../../../components/ZoneMap'
 import { ZoneStatusRow } from '../../../components/ZoneStatusRow'
 import { AlertItem } from '../../../components/AlertItem'
 import { EventRow } from '../../../components/EventRow'
 import type { OpsAlert } from '../../../types'
+
+// 경보 한 페이지에 몇 건인가. 좌측 거점 상황판(11거점 고정)의 자연 높이 1287px 이 정한 값이다 —
+// 우측 컬럼 = 경보(5행+페이저) 470 + 출결 268 + 서명 498 + gap 40 = 1276 으로 좌측과 11px 차.
+// 6건이면 1335 라 48px 넘친다. 거점 수가 바뀌면 이 숫자도 다시 재야 한다.
+const ALERTS_PER_PAGE = 5
 
 export default function Dashboard() {
   const [gapFlow, setGapFlow] = useState<{ zoneId: string; zoneName: string } | null>(null)
@@ -40,6 +46,9 @@ export default function Dashboard() {
   // 서명 피드는 배치 id(subjectId·scannerId)만 들고 온다 — 이름은 명부로 푼다.
   const scans = useLive(getRecentScans)
   const roster = useLive(getAssignments)
+  // 훅은 조기 반환 앞에서(ui.tsx usePageState 주석) — 경보 수가 바뀌면 1페이지로.
+  // 읽음은 수를 안 바꾸므로 '모두 읽음'을 눌러도 페이지가 튀지 않는다.
+  const alertPg = usePageState(alerts?.length ?? 0)
 
   if (!kpi || !zones || !alerts || !events || !issues || !notices || !edu || !scans || !roster) return null
 
@@ -50,6 +59,8 @@ export default function Dashboard() {
   const openZones = zones.filter((z) => z.status === 'open').length
   const openIssues = issues.filter((i) => i.status !== 'resolved').length
   const gapCount = alerts.filter((a) => a.level === 'critical').length
+  const unread = alerts.filter((a) => !a.read)
+  const alertPage = paginate(alerts, alertPg.page, ALERTS_PER_PAGE)
   const shiftKo = kpi.activeShift === 'AM' ? '오전조' : '오후조'
 
   // 근무공백 경보 → 3단계 대응 플로우 오픈.
@@ -128,16 +139,38 @@ export default function Dashboard() {
         </Section>
 
         <div className="col-span-1 flex flex-col gap-5">
+          {/* 경보만 페이지를 나눈다 — 16:00 에 54건까지 가서 카드가 3318px(뷰포트 3.8배)이 됐다.
+              출결·서명은 서비스가 이미 자르는 '최근 N건' 피드라 여기 해당 없다(전량은 377·26건이라
+              페이지로 넘길 물건이 아니다 — 인력 관리 화면이 대장을 맡는다).
+              5건인 근거: 좌측 거점 상황판(11거점 고정)의 자연 높이 1287px 에 우측 컬럼이 맞물린다. */}
           <Section
             title="경보 · 근무공백"
-            right={<span className="tnum rounded-full bg-critical-soft px-2 py-0.5 text-caption font-bold text-critical">{gapCount}</span>}
+            right={
+              <span className="flex items-center gap-1.5">
+                {unread.length > 0 && (
+                  <>
+                    <button
+                      onClick={() => markAlertsRead(unread.map((a) => a.readKey))}
+                      className="text-caption font-semibold text-ink-muted transition hover:text-ink-strong"
+                    >
+                      모두 읽음
+                    </button>
+                    <span className="tnum rounded-full bg-primary-600 px-2 py-0.5 text-caption font-bold text-white">
+                      {unread.length}
+                    </span>
+                  </>
+                )}
+                <span className="tnum rounded-full bg-critical-soft px-2 py-0.5 text-caption font-bold text-critical">{gapCount}</span>
+              </span>
+            }
             bodyClassName="px-4 py-1"
           >
             <div className="divide-y divide-line-soft">
-              {alerts.map((a) => (
+              {alertPage.slice.map((a) => (
                 <AlertItem
                   key={a.id}
                   alert={a}
+                  unread={!a.read}
                   action={
                     a.level === 'critical' && a.gapZoneId ? (
                       <button
@@ -154,6 +187,11 @@ export default function Dashboard() {
                 <div className="py-6 text-center text-label text-ink-faint">현재 경보 없음 — 전 거점 정상</div>
               )}
             </div>
+            {alertPage.pages > 1 && (
+              <div className="flex justify-center border-t border-line-soft py-2">
+                <Pagination page={alertPage.page} pages={alertPage.pages} onChange={alertPg.setPage} />
+              </div>
+            )}
           </Section>
 
           <Section title="실시간 출결" right={<LivePill />} bodyClassName="px-4 py-1">

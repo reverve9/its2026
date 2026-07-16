@@ -13,6 +13,8 @@ import {
   addScan,
   rawIssues,
   rawNotices,
+  isAlertRead,
+  markAlertsRead as markAlertsReadInStore,
   deploymentPlan,
   expenseUnitPerDay,
   activityGoodsSets,
@@ -400,8 +402,9 @@ export async function getAttendanceEvents(): Promise<AttendanceEvent[]> {
     })
 }
 
+// 최신순 — 시드 입력 순서가 아니라 접수 시각이 기준이다(공지와 같은 규칙).
 export async function getIssues(): Promise<Issue[]> {
-  return rawIssues()
+  return [...rawIssues()].sort((a, b) => hm(b.time) - hm(a.time))
 }
 export async function updateIssueStatus(id: string, status: IssueStatus): Promise<void> {
   setIssueStatus(id, status)
@@ -719,7 +722,8 @@ export async function getAlerts(): Promise<OpsAlert[]> {
   const gaps = await computeStaffingGaps()
   const compliance = await computeCheckCompliance()
   const shift = activeShiftAt(now)
-  const alerts: OpsAlert[] = []
+  // 읽음 표식은 아래에서 입힌다 — 여기선 아직 내용(message)이 안 정해져서 키를 못 만든다.
+  const alerts: Omit<OpsAlert, 'readKey' | 'read'>[] = []
 
   for (const g of gaps)
     alerts.push({
@@ -741,8 +745,28 @@ export async function getAlerts(): Promise<OpsAlert[]> {
       message: `14:00 교대 — 오전조 퇴근·오후조 투입. 미출근 ${absent}명 예비 대체 검토 중`,
     })
   }
+  // 읽음 표식을 입힌다 — 키는 id 가 아니라 id+내용이다(store 주석).
+  const marked = alerts.map((a) => {
+    const readKey = `${a.id}@${a.message}`
+    return { ...a, readKey, read: isAlertRead(readKey) }
+  })
+
+  // 안 읽은 것 먼저 → 그 안에서 심각도순.
+  //
+  // 시간순으로 안 가는 이유: 경보는 이벤트가 아니라 '지금 상태'라 gap·chk 가 전부 time: nowHM 이다
+  // (아래 push 들). 최신순으로 세우면 53건이 동률이라 무순이 된다 — 정렬이 아니라 우연이다.
+  // 안 읽은 것을 앞으로 올리는 게 최신순이 하려던 일('새 것을 먼저')을 실제로 한다:
+  // 그러지 않으면 안 읽은 경보가 9페이지 중 7페이지에 앉아 배지가 무용해진다.
   const order = { critical: 0, warning: 1, info: 2 }
-  return alerts.sort((a, b) => order[a.level] - order[b.level])
+  return marked.sort(
+    (a, b) => Number(a.read) - Number(b.read) || order[a.level] - order[b.level]
+  )
+}
+
+// 경보를 읽음으로 표시. 화면이 readKey 를 만들지 않고 getAlerts 가 준 걸 그대로 돌려준다 —
+// 키 규칙이 두 곳으로 갈리면 화면이 만든 키가 store 의 키와 어긋나 읽음이 영영 안 붙는다.
+export async function markAlertsRead(readKeys: string[]): Promise<void> {
+  markAlertsReadInStore(readKeys)
 }
 
 // KPI — 교대 인지형.

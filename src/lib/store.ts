@@ -186,6 +186,24 @@ export const hasScanKey = (idempotencyKey: string): boolean =>
   scans.some((s) => s.idempotencyKey === idempotencyKey)
 export const rawIssues = (): Issue[] => issues
 export const rawNotices = () => seedNotices
+
+// ── 경보 읽음 표식 ──────────────────────────────────────
+// '누가 이 경보를 봤다'는 원시 사실이라 여기 산다. Supabase 로 가면 테이블 하나가 된다.
+//
+// ⚠️ 키가 경보 id 가 아니다(readKey = id + 내용). 경보는 이벤트가 아니라 '지금 상태에서
+// 파생된 판정'이라 id 가 고정인 채 내용만 자란다 — chk:as-11 은 15:00 에 '14:00 누락'이고
+// 16:00 엔 '14:00·15:00 누락'이다. id 로 잡으면 15:00 에 읽은 순간 16:00 의 새 누락이
+// 읽음으로 묻혀서, 악화될수록 조용해지는 배지가 된다. 내용이 바뀌면 키가 바뀌어 다시 안 읽음이다.
+//
+// localStorage 가 아닌 이유: 다른 뮤테이션(물품·교육·임포트)이 전부 in-memory 라
+// 읽음만 새로고침을 살아남으면 상태가 어긋난다. 시연도 매번 안 읽음에서 시작해야 배지가 보인다.
+const readAlerts = new Set<string>()
+export const isAlertRead = (readKey: string): boolean => readAlerts.has(readKey)
+export const markAlertsRead = (readKeys: string[]): void => {
+  const before = readAlerts.size
+  for (const k of readKeys) readAlerts.add(k)
+  if (readAlerts.size !== before) emitChange()
+}
 export const deploymentPlan = () => DEPLOYMENT_PLAN
 export const expenseUnitPerDay = () => EXPENSE_UNIT_PER_DAY
 export const activityGoodsSets = () => ACTIVITY_GOODS_SETS
