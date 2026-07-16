@@ -1,9 +1,17 @@
 import { useState } from 'react'
-import { getFoodVendors, getFoodSummary, getFoodParasols, registerVendorDoc } from '../../../lib/services'
+import {
+  getFoodVendors, getFoodSummary, getFoodParasols, registerVendorDoc,
+  importVendors, VENDOR_IMPORT_HEADERS,
+} from '../../../lib/services'
 import { useLive } from '../../../lib/useLive'
 import type { FoodVendor, VendorKind } from '../../../types'
 import { PageHeader, Section } from '../../../components/layout'
-import { usePageState, paginate, Pagination } from '../../../components/ui'
+import {
+  usePageState, paginate, Pagination,
+  ActionButton, ImportButton, ListToolbar, ToolbarRow, FilterPills, FilterToggle,
+} from '../../../components/ui'
+import { exportExcel, exportTemplate, readExcel } from '../../../lib/excel'
+import { getNowDate } from '../../../lib/clock'
 
 // 업체 등록 현황 — 먹거리 입점업체(푸드트럭 5 · 음식부스 5) 정보·구비서류 등록 대장.
 // 클라이언트(업체)앱이 없으므로 업체 셀프 등록이 아니라 운영본부가 대신 등록·관리한다.
@@ -146,6 +154,7 @@ export default function FoodVendors() {
   const [kind, setKind] = useState<VendorKind>('truck')
   const [pendingOnly, setPendingOnly] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [toast, setToast] = useState('')
   // 훅은 조기 반환(`if (!vendors || !summary)`) 앞에서 — 탭·필터가 바뀌면 1페이지로.
   // 현재 시드는 탭당 5행이라 컨트롤이 렌더되지 않는다(1페이지). 업체가 늘면 그대로 동작.
   const pg = usePageState(`${kind}|${pendingOnly}`)
@@ -159,6 +168,39 @@ export default function FoodVendors() {
   const rows = vendors.filter((v) => v.kind === kind && (!pendingOnly || docDone(v) < v.docs.length))
   const page = paginate(rows, pg.page)
   const pct = summary.docTotal ? Math.round((summary.docDone / summary.docTotal) * 100) : 0
+
+  // 엑셀 내보내기 — 화면 컬럼 그대로. 조작 칸(›)은 데이터가 아니라 뺀다.
+  // 탭(푸드트럭/음식부스)이 곧 필터라 파일명에 박는다 — 안 박으면 두 탭이 같은 이름으로 내려온다.
+  const exportRows = () =>
+    exportExcel(
+      rows,
+      [
+        { label: '구획', value: (v) => v.spot },
+        { label: '상호', value: (v) => v.name },
+        { label: '주요 품목', value: (v) => v.items },
+        { label: '신청 운영시간', value: (v) => v.opHours },
+        { label: '대표 연락처', value: (v) => v.contact },
+        { label: '구비서류', value: (v) => (docDone(v) === v.docs.length ? '등록 완료' : `미비 ${v.docs.length - docDone(v)}건`) },
+        { label: '등록일', value: (v) => v.registeredAt ?? '—' },
+      ],
+      `업체등록현황_${tabs.find((t) => t.key === kind)?.label}_${getNowDate()}`
+    )
+
+  // 대량 등록 — 지금 열린 탭(푸드트럭/음식부스)으로 들어간다. 파일엔 구분 칸이 없다:
+  // 탭이 곧 그 답이라 파일에 또 물으면 둘이 어긋나는 날이 온다(탭은 트럭인데 파일은 부스).
+  const importRows = async (file: File) => {
+    try {
+      const r = await importVendors(await readExcel(file, VENDOR_IMPORT_HEADERS), kind)
+      // 실패 행을 삼키지 않는다 — '3팀 등록'만 띄우면 튕긴 행을 아무도 모른다.
+      const parts = [`${r.added}팀 등록`]
+      if (r.skipped) parts.push(`${r.skipped}팀 이미 있음(구획 중복)`)
+      if (r.errors.length) parts.push(`${r.errors.length}행 오류 — ${r.errors[0].row}행: ${r.errors[0].message}`)
+      setToast(parts.join(' · '))
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : '파일을 읽지 못했습니다.')
+    }
+    setTimeout(() => setToast(''), 6000)
+  }
 
   return (
     <div>
@@ -182,45 +224,39 @@ export default function FoodVendors() {
         <SummaryTile label="서류 미비 업체" value={`${summary.pendingVendors}팀`} sub="개장 전 보완 필요" tone={summary.pendingVendors ? 'warn' : 'ok'} />
       </div>
 
-      {/* 탭 — 푸드트럭 / 음식부스 */}
-      <div className="mb-3 flex items-center gap-2">
-        <div className="flex gap-1 rounded-full bg-neutral-100 p-0.5">
-          {tabs.map((t) => {
-            const n = vendors.filter((v) => v.kind === t.key).length
-            return (
-              <button
-                key={t.key}
-                onClick={() => setKind(t.key)}
-                className={`rounded-full px-3.5 py-1 text-label font-semibold transition ${
-                  kind === t.key ? 'bg-primary-600 text-white' : 'text-ink-muted hover:text-ink-strong'
-                }`}
-              >
-                {t.label} <span className="tnum">{n}</span>
-              </button>
-            )
-          })}
-        </div>
-        <button
-          onClick={() => setPendingOnly((v) => !v)}
-          className={`ml-auto rounded-full px-3 py-1.5 text-label font-semibold transition ${
-            pendingOnly ? 'bg-primary-600 text-white' : 'bg-surface text-ink-muted shadow-sm hover:text-ink-strong'
-          }`}
+      {/* 등록 대장 — 탭(푸드트럭/음식부스)이 이 화면의 필터다. 축이 하나뿐이라 한 행이다. */}
+      <ListToolbar>
+        <ToolbarRow
+          right={
+            <>
+              <ActionButton onClick={() => exportTemplate(VENDOR_IMPORT_HEADERS, '업체등록_등록양식')}>
+                양식 내려받기
+              </ActionButton>
+              <ImportButton onFile={importRows}>엑셀 가져오기</ImportButton>
+              <ActionButton onClick={exportRows} disabled={rows.length === 0}>
+                엑셀 내보내기
+              </ActionButton>
+              <Pagination page={page.page} pages={page.pages} onChange={pg.setPage} />
+            </>
+          }
         >
-          서류 미비만
-        </button>
-      </div>
+          <FilterPills
+            options={tabs.map((t) => ({ ...t, count: vendors.filter((v) => v.kind === t.key).length }))}
+            value={kind}
+            onChange={setKind}
+          />
+          <FilterToggle on={pendingOnly} onToggle={() => setPendingOnly((v) => !v)}>
+            서류미비
+          </FilterToggle>
+        </ToolbarRow>
+      </ListToolbar>
 
-      {/* 등록 대장 */}
-      <div className="mb-2 flex justify-end">
-        <Pagination
-          page={page.page}
-          pages={page.pages}
-          start={page.start}
-          shown={page.slice.length}
-          total={page.total}
-          onChange={pg.setPage}
-        />
-      </div>
+      {toast && (
+        <div className="mb-3 rounded-xl border border-ok/30 bg-ok-soft px-4 py-2.5 text-label font-semibold text-ok">
+          ✓ {toast}
+        </div>
+      )}
+
       <div className="card overflow-hidden">
         <table className="w-full text-label">
           <thead>

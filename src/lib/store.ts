@@ -107,6 +107,8 @@ const vendors: StoredVendor[] = seedVendors.map((v) => ({ ...v, docs: v.docs.map
 let eventSeq = events.length
 let scanSeq = scans.length
 let issueSeq = issues.length
+let asgSeq = assignments.length
+let vendorSeq = vendors.length
 
 // ── 안전 상태 — 운영중단 · 위험요인 점검 ──────────────
 export interface HazardItem {
@@ -254,6 +256,35 @@ export function addScan(sc: Omit<StoredScan, 'id'>): boolean {
   if (hasScanKey(sc.idempotencyKey)) return false
   scanSeq++
   scans.push({ ...sc, id: `sc-${scanSeq}` })
+  emitChange()
+  return true
+}
+
+// ── 명부·업체 신규 등록(엑셀 임포트 전용 경로) ──────────
+// 시드가 유일한 명부 소스였다 — 런타임에 사람이 늘어난 적이 없다. 여기가 그 첫 경로다.
+//
+// 멱등키(R4)는 addEvent·addScan 과 같은 뜻이지만 키를 밖에서 받지 않고 행에서 만든다.
+// 임포트 파일엔 우리가 발급한 id 가 없다(사람이 엑셀에 채워 넣은 행이다) — 같은 파일을 두 번
+// 올려도 명부가 두 배가 되지 않으려면 '무엇이 같은 행인가'를 데이터로 판정해야 한다.
+//
+// 사람 키가 연락처만이 아닌 이유: 한 사람이 배치를 여럿 가진다(personId ≠ 배치 id).
+// 연락처로만 막으면 '오전조 김OO'를 넣은 뒤 '오후조 김OO'가 중복으로 튕긴다.
+const rosterKey = (a: Pick<StoredAssignment, 'phone' | 'shift' | 'zoneId'>): string =>
+  `${a.phone}|${a.shift}|${a.zoneId ?? 'reserve'}`
+
+export function addAssignment(input: Omit<StoredAssignment, 'id'>): boolean {
+  if (assignments.some((a) => rosterKey(a) === rosterKey(input))) return false
+  asgSeq++
+  assignments.push({ ...input, id: `as-${asgSeq}` })
+  emitChange()
+  return true
+}
+
+// 업체 키 = 구획. 자리는 하나뿐이라 같은 구획에 두 업체가 설 수 없다.
+export function addVendor(input: Omit<StoredVendor, 'id'>): boolean {
+  if (vendors.some((v) => v.spot === input.spot)) return false
+  vendorSeq++
+  vendors.push({ ...input, id: `fv-${vendorSeq}`, docs: input.docs.map((d) => ({ ...d })) })
   emitChange()
   return true
 }

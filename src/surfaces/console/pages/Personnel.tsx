@@ -3,13 +3,19 @@ import { useSearchParams } from 'react-router-dom'
 import {
   getPersonnel, getGoodsSummary, getZones, issueGoods, payoutReady,
   hasEducation, certifyEducationBatch, CURRENT_OPERATOR,
+  importPersonnel, PERSONNEL_IMPORT_HEADERS,
 } from '../../../lib/services'
 import { useLive } from '../../../lib/useLive'
 import { roleLabel, roleCls } from '../../../lib/roleLabel'
+import { exportExcel, exportTemplate, readExcel } from '../../../lib/excel'
+import { getNowDate } from '../../../lib/clock'
 import { EDUCATION_KINDS } from '../../../types'
 import type { EducationKind, PersonnelRecord, Shift, StaffKind } from '../../../types'
 import { PageHeader } from '../../../components/layout'
-import { listNo, usePageState, paginate, Pagination } from '../../../components/ui'
+import {
+  listNo, usePageState, paginate, Pagination,
+  ActionButton, ImportButton, ListToolbar, ToolbarRow, FilterPills, FilterToggle,
+} from '../../../components/ui'
 import PersonDetailModal from './PersonDetail'
 
 // 인력 현황 — 운영(행정) 대장. 시간 비의존: 스크러버를 밀어도 이 화면은 변하지 않는다.
@@ -204,6 +210,63 @@ export default function Personnel() {
 
   const pct = goods.total ? Math.round((goods.complete / goods.total) * 100) : 0
 
+  // 엑셀 내보내기 — 화면 컬럼 그대로. 조작 칸(체크박스·›)은 데이터가 아니라 뺀다.
+  //
+  // ⚠️ 물품 칸을 화면 글자(✓ / —)로 적으면 안 된다. GoodsCell 의 미지급도 '—' 이고 운영인력의
+  // '해당 없음'(NotApplicable)도 '—' 이라, 화면에선 버튼 테두리로 갈리던 둘이 파일에선 같은 글자가
+  // 된다 — '안 준 사람'과 '줄 대상이 아닌 사람'이 한 칸에 섞인다(D30).
+  const exportRows = () =>
+    exportExcel(
+      rows,
+      [
+        { label: 'No.', value: (_p, i) => listNo(i) },
+        { label: '이름', value: (p) => p.personName },
+        { label: '역할', value: (p) => [roleLabel(p.role), p.employment].filter(Boolean).join(' · ') },
+        { label: '조', value: (p) => shiftKo(p.shift) },
+        { label: '배치 거점', value: (p) => zoneName(p) },
+        { label: '연락처', value: (p) => p.phone },
+        { label: '외국어', value: (p) => (p.lang.length ? p.lang.join(' · ') : '—') },
+        {
+          label: '교육 이수',
+          value: (p) =>
+            !isVol(p)
+              ? '—'
+              : hasEducation(p.education, '사전 통합교육')
+                ? `이수${hasEducation(p.education, '현장교육') ? ' · 현장' : ''}`
+                : '미이수',
+        },
+        { label: '바람막이', value: (p) => (isVol(p) ? (p.goods.jacket ? '지급' : '미지급') : '—') },
+        { label: '가방', value: (p) => (isVol(p) ? (p.goods.bag ? '지급' : '미지급') : '—') },
+        {
+          label: '정산 서류',
+          value: (p) =>
+            !isVol(p)
+              ? '—'
+              : payoutReady(p.payout)
+                ? '등록 완료'
+                : !p.payout.idCard && !p.payout.bankbook
+                  ? '미등록'
+                  : '서류 미비',
+        },
+      ],
+      `인력현황_${getNowDate()}`
+    )
+
+  // 대량 등록 — 예시파일을 받아 채워서 올리는 경로. 스키마는 익스포트와 다르다(등록 시점 사실만).
+  const importRows = async (file: File) => {
+    try {
+      const r = await importPersonnel(await readExcel(file, PERSONNEL_IMPORT_HEADERS))
+      // 실패 행을 삼키지 않는다 — '30명 등록'만 띄우면 튕긴 5명을 아무도 모른다.
+      const parts = [`${r.added}명 등록`]
+      if (r.skipped) parts.push(`${r.skipped}명 이미 있음`)
+      if (r.errors.length) parts.push(`${r.errors.length}행 오류 — ${r.errors[0].row}행: ${r.errors[0].message}`)
+      setToast(parts.join(' · '))
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : '파일을 읽지 못했습니다.')
+    }
+    setTimeout(() => setToast(''), 6000)
+  }
+
   return (
     <div>
       <PageHeader
@@ -242,90 +305,75 @@ export default function Personnel() {
         />
       </div>
 
-      {/* 검색 · 필터 */}
-      <div className="mb-3 flex items-center gap-3">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="이름 · 거점 · 연락처 · 역할 · 외국어 검색"
-          className="w-full max-w-xs rounded-lg border border-line bg-surface px-3 py-2 text-label text-ink-strong shadow-sm outline-none transition placeholder:text-ink-faint focus:border-primary-400"
-        />
-        <select
-          value={zoneFilter}
-          onChange={(e) => setZoneFilter(e.target.value)}
-          className="rounded-lg border border-line bg-surface px-3 py-2 text-label text-ink-strong shadow-sm outline-none transition focus:border-primary-400"
+      {/* 툴바 = 행의 쌓임. 우측 정렬이 행마다 일어나서 토글 우끝과 페이저 우끝이 한 선이다.
+          1행 = 검색·거점·건수 / 토글(우)  ·  2행 = 축들 / 액션·페이저(우) */}
+      <ListToolbar>
+        <ToolbarRow
+          right={
+            /* 교육·실비는 자원봉사자 항목이라 운영인력만 볼 땐 걷는다(D30) — 조작할 수 없는
+               축이 되고, 켜진 채로 숨으면 보이지 않는 손이 목록을 거른다. */
+            kind !== '운영인력' && (
+              <>
+                <FilterToggle on={eduPendingOnly} onToggle={() => setEduPendingOnly(!eduPendingOnly)}>
+                  교육미이수
+                </FilterToggle>
+                <FilterToggle on={payoutPendingOnly} onToggle={() => setPayoutPendingOnly((v) => !v)}>
+                  서류미비
+                </FilterToggle>
+              </>
+            )
+          }
         >
-          <option value="all">전체 거점</option>
-          {zones.map((z) => (
-            <option key={z.id} value={z.id}>
-              {z.name}
-            </option>
-          ))}
-          <option value="reserve">예비 · 미배정</option>
-        </select>
-        <span className="tnum text-caption text-ink-muted">{rows.length}명</span>
-      </div>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="이름 · 거점 · 연락처 · 역할 · 외국어 검색"
+            className="w-[200px] rounded-lg border border-line bg-surface px-3 py-1.5 text-label text-ink-strong shadow-sm outline-none transition placeholder:text-ink-faint focus:border-primary-400"
+          />
+          <select
+            value={zoneFilter}
+            onChange={(e) => setZoneFilter(e.target.value)}
+            className="rounded-lg border border-line bg-surface px-3 py-1.5 text-label text-ink-strong shadow-sm outline-none transition focus:border-primary-400"
+          >
+            <option value="all">전체 거점</option>
+            {zones.map((z) => (
+              <option key={z.id} value={z.id}>
+                {z.name}
+              </option>
+            ))}
+            <option value="reserve">예비 · 미배정</option>
+          </select>
+          <span className="tnum text-caption text-ink-muted">{rows.length}명</span>
+        </ToolbarRow>
 
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        {/* 구분 — 자원봉사자 / 운영인력. 이 화면의 1차 축이라 맨 앞에 둔다. */}
-        <div className="flex gap-1 rounded-full bg-neutral-100 p-0.5">
-          {kindFilters.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => {
-                setKind(f.key)
-                // 자원봉사자 전용 필터가 켜진 채로 숨으면 보이지 않는 손이 목록을 거른다.
-                if (f.key === '운영인력') { setShift('all'); setEduPendingOnly(false); setPayoutPendingOnly(false) }
-              }}
-              className={`rounded-full px-3.5 py-1 text-label font-semibold transition ${
-                kind === f.key ? 'bg-primary-600 text-white' : 'text-ink-muted hover:text-ink-strong'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-
-        {/* 아래는 전부 자원봉사자 축 — 운영인력만 볼 땐 걷는다.
-            운영인력에게 교대는 없고(전일 상주) 교육·실비는 대상이 아니라, 남겨두면
-            '오후조 0명' 같은 답이 나온다. 조작할 수 없는 축을 보여주는 게 아니라 없애는 게 맞다. */}
-        {kind !== '운영인력' && (
-          <>
-            <span className="mx-0.5 h-4 w-px bg-line" />
-            <div className="flex gap-1 rounded-full bg-neutral-100 p-0.5">
-              {shiftFilters.map((f) => (
-                <button
-                  key={f.key}
-                  onClick={() => setShift(f.key)}
-                  className={`rounded-full px-3 py-1 text-label font-semibold transition ${
-                    shift === f.key ? 'bg-primary-600 text-white' : 'text-ink-muted hover:text-ink-strong'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                onClick={() => setEduPendingOnly(!eduPendingOnly)}
-                className={`rounded-full px-3 py-1.5 text-label font-semibold transition ${
-                  eduPendingOnly ? 'bg-primary-600 text-white' : 'bg-surface text-ink-muted shadow-sm hover:text-ink-strong'
-                }`}
-              >
-                교육 미이수만
-              </button>
-              <button
-                onClick={() => setPayoutPendingOnly((v) => !v)}
-                className={`rounded-full px-3 py-1.5 text-label font-semibold transition ${
-                  payoutPendingOnly ? 'bg-primary-600 text-white' : 'bg-surface text-ink-muted shadow-sm hover:text-ink-strong'
-                }`}
-              >
-                정산 서류 미비만
-              </button>
-            </div>
-          </>
-        )}
-      </div>
+        <ToolbarRow
+          right={
+            <>
+              <ActionButton onClick={() => exportTemplate(PERSONNEL_IMPORT_HEADERS, '인력현황_등록양식')}>
+                양식 내려받기
+              </ActionButton>
+              <ImportButton onFile={importRows}>엑셀 가져오기</ImportButton>
+              <ActionButton onClick={exportRows} disabled={rows.length === 0}>
+                엑셀 내보내기
+              </ActionButton>
+              <Pagination page={page.page} pages={page.pages} onChange={pg.setPage} />
+            </>
+          }
+        >
+          {/* 구분 — 자원봉사자 / 운영인력. 이 화면의 1차 축이다. */}
+          <FilterPills
+            options={kindFilters}
+            value={kind}
+            onChange={(k) => {
+              setKind(k)
+              // 자원봉사자 전용 필터가 켜진 채로 숨으면 보이지 않는 손이 목록을 거른다.
+              if (k === '운영인력') { setShift('all'); setEduPendingOnly(false); setPayoutPendingOnly(false) }
+            }}
+          />
+          {/* 조 — 운영인력에게 교대는 없다(전일 상주). 남겨두면 '오후조 0명'이 답으로 나온다. */}
+          {kind !== '운영인력' && <FilterPills options={shiftFilters} value={shift} onChange={setShift} />}
+        </ToolbarRow>
+      </ListToolbar>
 
       {/* 일괄 인증 액션바 — 선택이 있을 때만 뜬다. 오프라인 통합교육 참석자 일괄 처리. */}
       {selected.size > 0 && (
@@ -377,16 +425,6 @@ export default function Personnel() {
       )}
 
       {/* 명부 대장 (컬럼 헤더 클릭 = 소팅 · 물품 칸 클릭 = 지급 처리) */}
-      <div className="mb-2 flex justify-end">
-        <Pagination
-          page={page.page}
-          pages={page.pages}
-          start={page.start}
-          shown={page.slice.length}
-          total={page.total}
-          onChange={pg.setPage}
-        />
-      </div>
       <div className="card overflow-hidden">
         <table className="w-full text-label">
           <thead>

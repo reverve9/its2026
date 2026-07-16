@@ -4,7 +4,12 @@ import { useLive, useNowMin } from '../../../lib/useLive'
 import { roleLabel, roleCls } from '../../../lib/roleLabel'
 import type { Assignment, DutyStatus, Shift } from '../../../types'
 import { PageHeader } from '../../../components/layout'
-import { StatusBadge, listNo, usePageState, paginate, Pagination } from '../../../components/ui'
+import {
+  StatusBadge, statusMeta, listNo, usePageState, paginate, Pagination,
+  ActionButton, ListToolbar, ToolbarRow, FilterPills, FilterToggle,
+} from '../../../components/ui'
+import { exportExcel } from '../../../lib/excel'
+import { getNowDate } from '../../../lib/clock'
 import { toMin, fmtDur } from '../../../lib/time'
 import PersonDetailModal from './PersonDetail'
 
@@ -92,6 +97,36 @@ export default function People() {
   const toggleSort = (k: SortKey) =>
     setSort((s) => (s.key === k ? { key: k, dir: (s.dir === 1 ? -1 : 1) as 1 | -1 } : { key: k, dir: 1 }))
 
+  // 엑셀 내보내기 — 화면 컬럼 그대로. 조작 칸(›)은 데이터가 아니라 뺀다.
+  // 출근 칸의 지연 배지는 화면 문구를 그대로 적는다 — 판정 기준(isLate)을 파일이 다시 쓰면
+  // 화면과 파일이 다른 말을 하는 날이 온다(D34).
+  const exportRows = () =>
+    exportExcel(
+      rows,
+      [
+        { label: 'No.', value: (_a, i) => listNo(i) },
+        { label: '조', value: (a) => shiftKo(a.shift) },
+        { label: '거점', value: (a) => zoneName(a) },
+        { label: '이름', value: (a) => a.personName },
+        { label: '연락처', value: (a) => a.phone },
+        { label: '역할', value: (a) => roleLabel(a.role) },
+        {
+          label: '출근',
+          value: (a) =>
+            !a.checkedInAt
+              ? '—'
+              : a.lateMin === undefined
+                ? a.checkedInAt
+                : `${a.checkedInAt} (${isLate(a.lateMin) ? `지각 ${a.lateMin}분` : `+${a.lateMin}분`})`,
+        },
+        { label: '상태', value: (a) => statusMeta[a.status].label },
+        { label: '퇴근', value: (a) => a.checkedOutAt ?? '—' },
+        { label: '비고 (외국어)', value: (a) => a.lang?.join(' · ') ?? '—' },
+        { label: '누적 근무', value: (a) => (a.checkedInAt ? fmtDur(workMin(a)) : '—') },
+      ],
+      `인력관리_${getNowDate()}`
+    )
+
   const Th = ({ label, k, align = 'left' }: { label: string; k?: SortKey; align?: 'left' | 'right' | 'center' }) => {
     const on = k && sort.key === k
     const alignCls = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
@@ -121,78 +156,54 @@ export default function People() {
         }
       />
 
-      {/* 검색 */}
-      <div className="mb-3 flex items-center gap-3">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="이름 · 거점 · 연락처 · 역할 검색"
-          className="w-full max-w-xs rounded-lg border border-line bg-surface px-3 py-2 text-label text-ink-strong shadow-sm outline-none transition placeholder:text-ink-faint focus:border-primary-400"
-        />
-        <select
-          value={zoneFilter}
-          onChange={(e) => setZoneFilter(e.target.value)}
-          className="rounded-lg border border-line bg-surface px-3 py-2 text-label text-ink-strong shadow-sm outline-none transition focus:border-primary-400"
+      {/* 툴바 = 행의 쌓임. 우측 정렬이 행마다 일어나서 토글 우끝과 페이저 우끝이 한 선이다. */}
+      <ListToolbar>
+        <ToolbarRow
+          right={
+            <FilterToggle on={reserveOnly} onToggle={() => setReserveOnly((v) => !v)}>
+              예비인력
+            </FilterToggle>
+          }
         >
-          <option value="all">전체 거점</option>
-          {zones.map((z) => (
-            <option key={z.id} value={z.id}>
-              {z.name}
-            </option>
-          ))}
-          <option value="reserve">예비 · 미배정</option>
-        </select>
-        <span className="tnum text-caption text-ink-muted">{rows.length}명</span>
-      </div>
-
-      {/* 조 필터 + 상태 필터 */}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="flex gap-1 rounded-full bg-neutral-100 p-0.5">
-          {shiftFilters.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setShift(f.key)}
-              className={`rounded-full px-3 py-1 text-label font-semibold transition ${
-                shift === f.key ? 'bg-primary-600 text-white' : 'text-ink-muted hover:text-ink-strong'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-        <span className="mx-1 h-4 w-px bg-line" />
-        {statusFilters.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setStatus(f.key)}
-            className={`rounded-full px-3 py-1.5 text-label font-semibold transition ${
-              status === f.key ? 'bg-primary-600 text-white' : 'bg-surface text-ink-muted shadow-sm hover:text-ink-strong'
-            }`}
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="이름 · 거점 · 연락처 · 역할 검색"
+            className="w-[200px] rounded-lg border border-line bg-surface px-3 py-1.5 text-label text-ink-strong shadow-sm outline-none transition placeholder:text-ink-faint focus:border-primary-400"
+          />
+          <select
+            value={zoneFilter}
+            onChange={(e) => setZoneFilter(e.target.value)}
+            className="rounded-lg border border-line bg-surface px-3 py-1.5 text-label text-ink-strong shadow-sm outline-none transition focus:border-primary-400"
           >
-            {f.label}
-          </button>
-        ))}
-        <button
-          onClick={() => setReserveOnly((v) => !v)}
-          className={`ml-auto rounded-full px-3 py-1.5 text-label font-semibold transition ${
-            reserveOnly ? 'bg-primary-600 text-white' : 'bg-surface text-ink-muted shadow-sm hover:text-ink-strong'
-          }`}
+            <option value="all">전체 거점</option>
+            {zones.map((z) => (
+              <option key={z.id} value={z.id}>
+                {z.name}
+              </option>
+            ))}
+            <option value="reserve">예비 · 미배정</option>
+          </select>
+          <span className="tnum text-caption text-ink-muted">{rows.length}명</span>
+        </ToolbarRow>
+
+        <ToolbarRow
+          right={
+            <>
+              <ActionButton onClick={exportRows} disabled={rows.length === 0}>
+                엑셀 내보내기
+              </ActionButton>
+              <Pagination page={page.page} pages={page.pages} onChange={pg.setPage} />
+            </>
+          }
         >
-          예비인력만
-        </button>
-      </div>
+          {/* 조 · 상태 — 둘 다 단일선택 축이라 같은 모양(트랙)이다. */}
+          <FilterPills options={shiftFilters} value={shift} onChange={setShift} />
+          <FilterPills options={statusFilters} value={status} onChange={setStatus} />
+        </ToolbarRow>
+      </ListToolbar>
 
       {/* 로스터 테이블 (컬럼 헤더 클릭 = 소팅) */}
-      <div className="mb-2 flex justify-end">
-        <Pagination
-          page={page.page}
-          pages={page.pages}
-          start={page.start}
-          shown={page.slice.length}
-          total={page.total}
-          onChange={pg.setPage}
-        />
-      </div>
       <div className="card overflow-hidden">
         <table className="w-full text-label">
           <thead>

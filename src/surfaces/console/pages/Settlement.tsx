@@ -217,7 +217,7 @@ export default function Settlement() {
                 absentOnly ? 'bg-primary-600 text-white' : 'bg-surface text-ink-muted shadow-sm hover:text-ink-strong'
               }`}
             >
-              결근자만
+              결근자
             </button>
           </>
         )}
@@ -295,14 +295,7 @@ export default function Settlement() {
       {tab === 'detail' && (
        <>
         <div className="mb-2 flex justify-end">
-          <Pagination
-            page={page.page}
-            pages={page.pages}
-            start={page.start}
-            shown={page.slice.length}
-            total={page.total}
-            onChange={pg.setPage}
-          />
+          <Pagination page={page.page} pages={page.pages} onChange={pg.setPage} />
         </div>
         <div className="card overflow-hidden">
           <table className="w-full text-label">

@@ -158,14 +158,7 @@ export default function StaffSettlement() {
           ))}
         </div>
         <div className="ml-auto">
-          <Pagination
-            page={page.page}
-            pages={page.pages}
-            start={page.start}
-            shown={page.slice.length}
-            total={page.total}
-            onChange={pg.setPage}
-          />
+          <Pagination page={page.page} pages={page.pages} onChange={pg.setPage} />
         </div>
       </div>
 

@@ -43,6 +43,8 @@ import {
   rawSafety,
   setSuspension,
   setHazard,
+  addAssignment,
+  addVendor,
 } from './store'
 import type { StoredAssignment, StoredEvent, SafetyState } from './store'
 import type {
@@ -941,6 +943,113 @@ export const getFoodParasols = async (): Promise<number> => foodParasols()
 // 구비서류 등록/해제(R3 — 명령형 쓰기). 등록일은 운영일 기준.
 export async function registerVendorDoc(vendorId: string, docId: string, done: boolean): Promise<boolean> {
   return setVendorDoc(vendorId, docId, done, opsDate())
+}
+
+// ── 엑셀 임포트 ─────────────────────────────────────────
+// 대량 신규 등록. 개별 수동 입력에만 기대지 않기 위한 경로다.
+//
+// ⚠️ 임포트 스키마는 익스포트와 다르다. 익스포트는 화면 컬럼(표시층 값 — '거점관리'·'종합안내소')
+// 을 그대로 적고, 임포트는 등록 시점 사실만 받는다. 같은 파일을 돌려 쓰면 roleLabel 이 표시층에서
+// 입력층이 되어(D23 위반) 배지 문구를 바꾸는 날 임포트가 조용히 깨진다.
+//
+// ⚠️ 교육 이수·활동물품·정산 서류·구비서류는 받지 않는다. 등록 시점의 사실이 아니다 —
+// 예시파일에 칸을 만들면 '등록하면서 물품을 지급'이 되고, 그게 D30 이 잡은 사고다.
+// 그것들은 등록 후 콘솔에서 관리자가 토글한다.
+//
+// 갱신하지 않는다. 키가 겹치면 건너뛴다(addScan 과 같은 뜻) — 임포트가 덮어쓰면 화면에서
+// 한 작업이 파일 한 번에 날아간다. 수정은 콘솔의 일이다.
+export interface ImportResult {
+  added: number
+  skipped: number // 이미 있는 행(멱등, R4)
+  errors: { row: number; message: string }[] // row = 엑셀 행 번호(헤더가 1행)
+}
+
+const ROLE_BY_LABEL: Record<string, StaffRole> = { 봉사자: '봉사자', 거점관리자: '거점관리자', 현장운영: '현장운영' }
+const KIND_BY_LABEL: Record<string, StaffKind> = { 자원봉사자: '자원봉사자', 운영인력: '운영인력' }
+const SHIFT_BY_LABEL: Record<string, 'AM' | 'PM'> = { 오전: 'AM', 오후: 'PM' }
+
+export const PERSONNEL_IMPORT_HEADERS = ['이름', '연락처', '구분', '역할', '조', '배치 거점', '외국어']
+
+export async function importPersonnel(rows: Record<string, string>[]): Promise<ImportResult> {
+  const zones = rawZones()
+  const out: ImportResult = { added: 0, skipped: 0, errors: [] }
+
+  rows.forEach((r, i) => {
+    const at = i + 2 // 헤더 1행 + 0-index
+    const fail = (m: string) => out.errors.push({ row: at, message: m })
+
+    const kind = KIND_BY_LABEL[r['구분']]
+    const role = ROLE_BY_LABEL[r['역할']]
+    const shift = SHIFT_BY_LABEL[r['조']]
+    const zone = zones.find((z) => z.name === r['배치 거점'])
+
+    if (!r['이름']) return fail('이름이 비었습니다.')
+    if (!/^01\d-\d{3,4}-\d{4}$/.test(r['연락처'])) return fail(`연락처 형식이 아닙니다 — ${r['연락처'] || '(빈칸)'}`)
+    if (!kind) return fail(`구분은 ${Object.keys(KIND_BY_LABEL).join(' · ')} 중 하나여야 합니다 — ${r['구분'] || '(빈칸)'}`)
+    if (!role) return fail(`역할은 ${Object.keys(ROLE_BY_LABEL).join(' · ')} 중 하나여야 합니다 — ${r['역할'] || '(빈칸)'}`)
+    if (!shift) return fail(`조는 오전 · 오후 중 하나여야 합니다 — ${r['조'] || '(빈칸)'}`)
+    if (!zone) return fail(`없는 거점입니다 — ${r['배치 거점'] || '(빈칸)'}`)
+    // 자원봉사자는 봉사자, 운영인력은 거점관리자·현장운영. 섞이면 정산 모수가 조용히 오염된다.
+    if ((kind === '자원봉사자') !== (role === '봉사자')) return fail(`${kind}에 ${role} 역할은 맞지 않습니다.`)
+
+    const added = addAssignment({
+      personId: `p-imp-${zone.id}-${r['연락처']}-${shift}`,
+      personName: r['이름'],
+      phone: r['연락처'],
+      kind,
+      role,
+      lang: r['외국어'] ? r['외국어'].split('·').map((s) => s.trim()).filter(Boolean) : [],
+      isReserve: false,
+      shift,
+      zoneId: zone.id,
+      // 조에서 파생 — 시드와 같은 규칙(data.ts). 임포트가 다른 시각을 쓰면 같은 조인데
+      // 지각 판정 기준이 사람마다 갈린다(D34).
+      plannedInMin: kind === '운영인력' ? 8 * 60 + 30 : shift === 'AM' ? 10 * 60 : 14 * 60,
+      ...(kind === '운영인력' ? { plannedOutMin: 18 * 60 + 30 } : {}),
+      // 자원봉사자 항목은 '아직 아무것도 안 한' 상태로 연다 — 받지 않은 사실을 지어내지 않는다.
+      ...(kind === '자원봉사자'
+        ? { goods: { jacket: false, bag: false }, payout: { idCard: false, bankbook: false } }
+        : {}),
+      absentDays: 0,
+    })
+    if (added) out.added++
+    else out.skipped++
+  })
+
+  return out
+}
+
+export const VENDOR_IMPORT_HEADERS = ['구획', '상호', '주요 품목', '신청 운영시간', '대표 연락처']
+
+export async function importVendors(rows: Record<string, string>[], kind: VendorKind): Promise<ImportResult> {
+  const out: ImportResult = { added: 0, skipped: 0, errors: [] }
+  // 구비서류 항목은 업체가 정하는 게 아니라 우리가 요구하는 목록이다 — 기존 업체에서 가져온다.
+  const docTemplate = rawVendors().find((v) => v.kind === kind)?.docs ?? []
+
+  rows.forEach((r, i) => {
+    const at = i + 2
+    const fail = (m: string) => out.errors.push({ row: at, message: m })
+
+    if (!r['구획']) return fail('구획이 비었습니다.')
+    if (!r['상호']) return fail('상호가 비었습니다.')
+    if (!/^01\d-\d{3,4}-\d{4}$/.test(r['대표 연락처']))
+      return fail(`대표 연락처 형식이 아닙니다 — ${r['대표 연락처'] || '(빈칸)'}`)
+
+    const added = addVendor({
+      name: r['상호'],
+      kind,
+      items: r['주요 품목'],
+      spot: r['구획'],
+      opHours: r['신청 운영시간'],
+      contact: r['대표 연락처'],
+      docs: docTemplate.map((d) => ({ ...d, done: false, at: undefined })),
+      registeredAt: opsDate(),
+    })
+    if (added) out.added++
+    else out.skipped++
+  })
+
+  return out
 }
 
 // ── 스캔(QR = 서명) ─────────────────────────────────────
