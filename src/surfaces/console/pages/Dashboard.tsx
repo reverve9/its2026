@@ -19,26 +19,19 @@ import { loadConsoleSession } from '../../../lib/consoleAuth'
 import { fmtHM } from '../../../lib/clock'
 import StaffingGapFlow from '../StaffingGapFlow'
 import { PageHeader, Section, LivePill } from '../../../components/layout'
-import { StatTile, Pagination, usePageState, paginate, FilterPills } from '../../../components/ui'
-import { ZoneMap } from '../../../components/ZoneMap'
-import { ZoneStatusRow } from '../../../components/ZoneStatusRow'
+import { StatTile, Pagination, usePageState, paginate } from '../../../components/ui'
+import { ZoneBoard } from '../../../components/ZoneBoard'
 import { AlertItem } from '../../../components/AlertItem'
 import { EventRow } from '../../../components/EventRow'
-import type { OpsAlert, ZoneKind } from '../../../types'
+import type { OpsAlert } from '../../../types'
 
-// 경보 한 페이지에 몇 건인가. 좌측 거점 상황판(11거점 고정)의 자연 높이 1287px 이 정한 값이다 —
-// 우측 컬럼 = 경보(5행+페이저) 470 + 출결 268 + 서명 498 + gap 40 = 1276 으로 좌측과 11px 차.
-// 6건이면 1335 라 48px 넘친다. 거점 수가 바뀌면 이 숫자도 다시 재야 한다.
+// 경보 한 페이지에 몇 건인가. 좌우 컬럼 높이가 맞물리게 정한 값이다 —
+// 좌측(거점 상황판 통계표 + 공지/이슈)과 우측(경보 5행+페이저 + 출결 + 서명)이 실측 1239px 로 맞는다.
+// 거점 수·행 여백·상황판 구성이 바뀌면 다시 재야 한다(실측: 두 컬럼 getBoundingClientRect).
 const ALERTS_PER_PAGE = 5
-
-// 거점 상황판 열 수. 행 경계선 판정(lastRowStart)이 이 값을 봐야 한다 —
-// grid-cols-2 만 바꾸고 여기를 안 고치면 마지막 행에 선이 남는다.
-const ZONE_COLS = 2
 
 export default function Dashboard() {
   const [gapFlow, setGapFlow] = useState<{ zoneId: string; zoneName: string } | null>(null)
-  // 행사장이 기본 — 5거점이 올림픽파크 안에 있고 정원 30/110 이 여기 걸린다.
-  const [zoneKind, setZoneKind] = useState<ZoneKind>('venue')
   // 이 화면은 세션이 있을 때만 마운트된다(ConsoleLayout 이 없으면 로그인 화면을 낸다).
   // 로그인·로그아웃은 트리를 통째로 갈아서 렌더 중 읽어도 낡을 수 없다.
   const role = loadConsoleSession()?.role ?? 'client'
@@ -68,13 +61,6 @@ export default function Dashboard() {
   const alertPage = paginate(alerts, alertPg.page, ALERTS_PER_PAGE)
   const shiftKo = kpi.activeShift === 'AM' ? '오전조' : '오후조'
 
-  const zoneTabs: { key: ZoneKind; label: string; count: number }[] = [
-    { key: 'venue', label: '행사장', count: zones.filter((z) => z.kind === 'venue').length },
-    { key: 'tourist', label: '관광지', count: zones.filter((z) => z.kind === 'tourist').length },
-  ]
-  const shownZones = zones.filter((z) => z.kind === zoneKind)
-  // 마지막 행의 시작 인덱스 — 그 앞까지만 경계선을 그린다(ZoneStatusRow divider 주석).
-  const lastRowStart = shownZones.length - (shownZones.length % ZONE_COLS || ZONE_COLS)
 
   // 근무공백 경보 → 3단계 대응 플로우 오픈.
   const openGapFlow = (alert: OpsAlert) => {
@@ -142,21 +128,12 @@ export default function Dashboard() {
 
       {/* 좌: 거점 상황판 / 우: 경보 + 라이브 */}
       <div className="grid grid-cols-3 gap-5">
-        {/* 탭이 지도와 목록을 함께 가른다 — 축척이 75배 달라 한 지도에 못 담기 때문이다
-            (ZoneMap 주석). 목록까지 같이 걸리는 건 덤이 아니라 필요다: 지도가 행사장만
-            보여주는데 목록에 관광지가 남으면 둘이 다른 말을 한다.
-            2열인 이유는 스크롤이다 — 11행 609px 이 한 종류 5~6행 3줄 165px 이 된다. */}
+        {/* 거점 상황판 = 통계표(ZoneBoard). 지도(핀 배치)는 버렸다 — 노트북 관제에서 운영자는
+            공간이 아니라 상태로 판단하고, 목록이 이미 그 상태를 다 날랐다(지도는 기능상 중복이었다).
+            탭이 한 종류만 넘겨 5~6행이라 스크롤이 없다. */}
         <div className="col-span-2 flex flex-col gap-5">
-          <Section
-            title="전 거점 상황판"
-            right={<FilterPills options={zoneTabs} value={zoneKind} onChange={setZoneKind} />}
-          >
-            <ZoneMap zones={shownZones} />
-            <div className="mt-3 grid grid-cols-2 gap-x-6 border-t border-line pt-1">
-              {shownZones.map((z, i) => (
-                <ZoneStatusRow key={z.id} zone={z} divider={i < lastRowStart} />
-              ))}
-            </div>
+          <Section title="전 거점 상황판" bodyClassName="p-0">
+            <ZoneBoard zones={zones} issues={issues} />
           </Section>
 
           {/* 공지와 이슈 — 예전엔 '오늘 진행 · 안내기준 배포' 한 상자에 반씩 들어 있었다.
