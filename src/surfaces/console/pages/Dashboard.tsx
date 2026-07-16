@@ -19,20 +19,26 @@ import { loadConsoleSession } from '../../../lib/consoleAuth'
 import { fmtHM } from '../../../lib/clock'
 import StaffingGapFlow from '../StaffingGapFlow'
 import { PageHeader, Section, LivePill } from '../../../components/layout'
-import { StatTile, Pagination, usePageState, paginate } from '../../../components/ui'
+import { StatTile, Pagination, usePageState, paginate, FilterPills } from '../../../components/ui'
 import { ZoneMap } from '../../../components/ZoneMap'
 import { ZoneStatusRow } from '../../../components/ZoneStatusRow'
 import { AlertItem } from '../../../components/AlertItem'
 import { EventRow } from '../../../components/EventRow'
-import type { OpsAlert } from '../../../types'
+import type { OpsAlert, ZoneKind } from '../../../types'
 
 // 경보 한 페이지에 몇 건인가. 좌측 거점 상황판(11거점 고정)의 자연 높이 1287px 이 정한 값이다 —
 // 우측 컬럼 = 경보(5행+페이저) 470 + 출결 268 + 서명 498 + gap 40 = 1276 으로 좌측과 11px 차.
 // 6건이면 1335 라 48px 넘친다. 거점 수가 바뀌면 이 숫자도 다시 재야 한다.
 const ALERTS_PER_PAGE = 5
 
+// 거점 상황판 열 수. 행 경계선 판정(lastRowStart)이 이 값을 봐야 한다 —
+// grid-cols-2 만 바꾸고 여기를 안 고치면 마지막 행에 선이 남는다.
+const ZONE_COLS = 2
+
 export default function Dashboard() {
   const [gapFlow, setGapFlow] = useState<{ zoneId: string; zoneName: string } | null>(null)
+  // 행사장이 기본 — 5거점이 올림픽파크 안에 있고 정원 30/110 이 여기 걸린다.
+  const [zoneKind, setZoneKind] = useState<ZoneKind>('venue')
   // 이 화면은 세션이 있을 때만 마운트된다(ConsoleLayout 이 없으면 로그인 화면을 낸다).
   // 로그인·로그아웃은 트리를 통째로 갈아서 렌더 중 읽어도 낡을 수 없다.
   const role = loadConsoleSession()?.role ?? 'client'
@@ -56,12 +62,19 @@ export default function Dashboard() {
   const personName = Object.fromEntries(roster.map((a) => [a.id, a.personName]))
   // scannerId 가 null 인 스캔 = 슈퍼어드민(배치가 없다). 명부에 없는 게 정상이다.
   const scannerName = (id: string | null) => (id === null ? '운영본부 관리자' : personName[id] ?? '—')
-  const openZones = zones.filter((z) => z.status === 'open').length
   const openIssues = issues.filter((i) => i.status !== 'resolved').length
   const gapCount = alerts.filter((a) => a.level === 'critical').length
   const unread = alerts.filter((a) => !a.read)
   const alertPage = paginate(alerts, alertPg.page, ALERTS_PER_PAGE)
   const shiftKo = kpi.activeShift === 'AM' ? '오전조' : '오후조'
+
+  const zoneTabs: { key: ZoneKind; label: string; count: number }[] = [
+    { key: 'venue', label: '행사장', count: zones.filter((z) => z.kind === 'venue').length },
+    { key: 'tourist', label: '관광지', count: zones.filter((z) => z.kind === 'tourist').length },
+  ]
+  const shownZones = zones.filter((z) => z.kind === zoneKind)
+  // 마지막 행의 시작 인덱스 — 그 앞까지만 경계선을 그린다(ZoneStatusRow divider 주석).
+  const lastRowStart = shownZones.length - (shownZones.length % ZONE_COLS || ZONE_COLS)
 
   // 근무공백 경보 → 3단계 대응 플로우 오픈.
   const openGapFlow = (alert: OpsAlert) => {
@@ -95,7 +108,11 @@ export default function Dashboard() {
         <StatTile label="미출근" value={kpi.absent} unit="명" tone="critical" hint="예비 대체 검토" />
         <StatTile label="근무공백" value={kpi.gapAlerts} unit="거점" tone="critical" hint="예비 투입 필요" />
         <StatTile label="투입가능 예비" value={kpi.reserveAvailable} unit="명" tone="ok" />
-        <StatTile label={`교대 후 경과`} value={kpi.minsSinceShiftStart} unit="분" hint={`운영 중 ${openZones}/${zones.length} · 이슈 ${openIssues}`} />
+        {/* 부제가 없다. '운영 중 11/11 · 이슈 3'이 있었는데 교대 후 경과와 아무 상관이 없었다 —
+            부제는 그 타일의 값을 풀어 쓰는 자리다(배치 인원 → 오전 55·오후 55). 갈 곳 없던 두 수가
+            남는 칸에 주차돼 있었고, 그래서 둘 다 제 집과 겹쳤다: 운영 중은 거점 상황판이,
+            이슈는 미처리 이슈 카드가 수와 내용을 같이 말한다. */}
+        <StatTile label="교대 후 경과" value={kpi.minsSinceShiftStart} unit="분" />
         {/* 교육 이수율 — 미이수가 있으면 인력 현황의 미이수 명단으로 드릴다운.
             발주처(client)에겐 인력 현황이 없으므로 타일만 남고 링크가 걷힌다 —
             등급 판정을 여기서 다시 쓰지 않고 사이드바와 같은 배열에 묻는다(R5).
@@ -125,18 +142,75 @@ export default function Dashboard() {
 
       {/* 좌: 거점 상황판 / 우: 경보 + 라이브 */}
       <div className="grid grid-cols-3 gap-5">
-        <Section
-          className="col-span-2"
-          title="전 거점 상황판"
-          right={<span className="text-caption text-ink-muted">행사장 {zones.filter((z) => z.kind === 'venue').length} · 관광지 {zones.filter((z) => z.kind === 'tourist').length}</span>}
-        >
-          <ZoneMap zones={zones} />
-          <div className="mt-3 border-t border-line pt-1">
-            {zones.map((z) => (
-              <ZoneStatusRow key={z.id} zone={z} />
-            ))}
+        {/* 탭이 지도와 목록을 함께 가른다 — 축척이 75배 달라 한 지도에 못 담기 때문이다
+            (ZoneMap 주석). 목록까지 같이 걸리는 건 덤이 아니라 필요다: 지도가 행사장만
+            보여주는데 목록에 관광지가 남으면 둘이 다른 말을 한다.
+            2열인 이유는 스크롤이다 — 11행 609px 이 한 종류 5~6행 3줄 165px 이 된다. */}
+        <div className="col-span-2 flex flex-col gap-5">
+          <Section
+            title="전 거점 상황판"
+            right={<FilterPills options={zoneTabs} value={zoneKind} onChange={setZoneKind} />}
+          >
+            <ZoneMap zones={shownZones} />
+            <div className="mt-3 grid grid-cols-2 gap-x-6 border-t border-line pt-1">
+              {shownZones.map((z, i) => (
+                <ZoneStatusRow key={z.id} zone={z} divider={i < lastRowStart} />
+              ))}
+            </div>
+          </Section>
+
+          {/* 공지와 이슈 — 예전엔 '오늘 진행 · 안내기준 배포' 한 상자에 반씩 들어 있었다.
+              쪼갠 이유: 방향이 반대다. 공지는 본부→현장(나가는 것)이고 이슈는 현장→본부
+              (들어오는 것)라, 한 상자로 묶을 공통점이 '둘 다 오늘 일'밖에 없었다.
+              그 제목도 버렸다 — 최초 커밋의 스캐폴드이자 데이터 척추 이름(이슈이벤트 /
+              공지·안내기준)이라 운영자가 아니라 설계자에게 말을 걸고 있었다(D26).
+              여기 있는 이유: 거점 상황판만으론 좌측이 762px 이고 우측이 1284px 라 522px 이
+              비어 있었다. 이 둘(505px)이 정확히 그 자리다 → 두 컬럼이 1287/1284 로 맞물린다. */}
+          <div className="grid grid-cols-2 gap-5">
+            <Section title="공지 · 안내기준">
+              {notices.length === 0 && (
+                <p className="py-2 text-label text-ink-muted">아직 발령된 공지가 없습니다.</p>
+              )}
+              <div className="divide-y divide-line-soft">
+                {notices.map((n) => (
+                  <div key={n.id} className="group relative py-2 first:pt-0">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-label font-semibold text-ink-strong">{n.title}</span>
+                      <span className="tnum shrink-0 text-caption text-ink-faint">{n.time}</span>
+                    </div>
+                    {/* 무조건 한 줄 — 본문 길이가 카드 높이를 정하게 두지 않는다. 공지는 길이가
+                        제각각이라 그대로 두면 발령 하나에 좌우 컬럼 균형이 흔들린다. */}
+                    <p className="mt-0.5 truncate text-label leading-snug text-ink-base">{n.body}</p>
+                    <span className="mt-1 inline-block rounded bg-neutral-100 px-1.5 py-0.5 text-caption text-ink-muted">
+                      {describeAudience(n.audience, zones)}
+                    </span>
+                    {/* 전문 팝오버 — 잘린 한 줄을 마우스로 펴 본다. 카드가 아니라 행에 걸리므로
+                        아래 행 위로 뜬다(z-10). 팝오버 자신이 group 안이라 그 위로 마우스를
+                        옮겨도 닫히지 않는다 — 긴 문안은 읽는 데 시간이 걸린다. */}
+                    <div className="invisible absolute left-0 top-full z-10 w-full rounded-lg border border-line bg-surface p-3 text-label leading-snug text-ink-base shadow-lg group-hover:visible">
+                      {n.body}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+
+            <Section title="미처리 이슈">
+              {openIssues === 0 && (
+                <p className="py-2 text-label text-ink-muted">미처리 이슈가 없습니다.</p>
+              )}
+              <div className="divide-y divide-line-soft">
+                {issues.filter((i) => i.status !== 'resolved').map((i) => (
+                  <div key={i.id} className="flex items-center gap-2 py-2 first:pt-0">
+                    <span className="shrink-0 rounded-md bg-neutral-100 px-1.5 py-0.5 text-caption font-semibold text-ink-muted">{i.type}</span>
+                    <span className="min-w-0 flex-1 truncate text-label text-ink-base">{i.message}</span>
+                    <span className="tnum shrink-0 text-caption text-ink-faint">{i.time}</span>
+                  </div>
+                ))}
+              </div>
+            </Section>
           </div>
-        </Section>
+        </div>
 
         <div className="col-span-1 flex flex-col gap-5">
           {/* 경보만 페이지를 나눈다 — 16:00 에 54건까지 가서 카드가 3318px(뷰포트 3.8배)이 됐다.
@@ -231,46 +305,6 @@ export default function Dashboard() {
             </div>
           </Section>
         </div>
-      </div>
-
-      {/* 하단: 공지 · 이슈 */}
-      <div className="mt-5">
-        <Section title="오늘 진행 · 안내기준 배포">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <div className="mb-2 text-label font-semibold text-ink-muted">최근 공지 · 안내기준</div>
-              {notices.length === 0 && (
-                <p className="py-2 text-label text-ink-muted">아직 발령된 공지가 없습니다.</p>
-              )}
-              <div className="divide-y divide-line-soft">
-                {notices.map((n) => (
-                  <div key={n.id} className="py-2">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-label font-semibold text-ink-strong">{n.title}</span>
-                      <span className="tnum shrink-0 text-caption text-ink-faint">{n.time}</span>
-                    </div>
-                    <p className="mt-0.5 text-label leading-snug text-ink-base">{n.body}</p>
-                    <span className="mt-1 inline-block rounded bg-neutral-100 px-1.5 py-0.5 text-caption text-ink-muted">
-                      {describeAudience(n.audience, zones)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <div className="mb-2 text-label font-semibold text-ink-muted">미처리 이슈</div>
-              <div className="divide-y divide-line-soft">
-                {issues.filter((i) => i.status !== 'resolved').map((i) => (
-                  <div key={i.id} className="flex items-center gap-2 py-2">
-                    <span className="shrink-0 rounded-md bg-neutral-100 px-1.5 py-0.5 text-caption font-semibold text-ink-muted">{i.type}</span>
-                    <span className="min-w-0 flex-1 truncate text-label text-ink-base">{i.message}</span>
-                    <span className="tnum shrink-0 text-caption text-ink-faint">{i.time}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </Section>
       </div>
 
       {gapFlow && <StaffingGapFlow zoneId={gapFlow.zoneId} zoneName={gapFlow.zoneName} onClose={() => setGapFlow(null)} />}

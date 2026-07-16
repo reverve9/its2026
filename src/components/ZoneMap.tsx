@@ -3,15 +3,18 @@ import type { Zone } from '../types'
 // 스키매틱 거점 지도 — 타일맵 없이 실제 위경도를 정규화해 상대 위치로 배치.
 // (블라인드·오프라인 안전, 지명/브랜딩 노출 없음)
 // 모양 = 종류(행사장 사각 / 관광지 원), 색 = 상태(공백=경보 / 중단=발령 / 정상 / 비운영).
-
+//
+// ⚠️ 한 프레임에 두 종류를 같이 그리지 말 것. 축척이 75배 다르다 —
+// 행사장 5거점은 올림픽파크 안 226m 이고 관광지 6거점은 강릉시 전역 16,678m 다.
+// 둘을 합치면 1px ≈ 44m 가 되어 행사장 전체가 5px 에 뭉친다. 예전 판은 그래서 행사장을
+// 인셋 박스 안 3×2 격자에 인덱스로 찍었는데(좌표를 통째로 버렸다), 그건 묶은 게 아니라
+// 묶은 척한 것이었다. 지금은 호출부가 한 종류만 넘기고 그 안에서 정규화한다 →
+// 두 축척 다 정직해지고 행사장도 실제 상대 위치를 되찾는다.
 const C = {
   primary: '#37766f',
   critical: '#b91c1c',
   warn: '#b45309',
   neutral: '#8c979e',
-  line: '#d7dde1',
-  region: '#eff5f4',
-  regionLine: '#aed0cc',
   ink: '#3a4247',
   faint: '#8c979e',
 }
@@ -28,62 +31,37 @@ const fillOf = (z: Zone) =>
   z.status === 'suspended' ? C.warn : z.status !== 'open' ? C.neutral : z.present < z.quota ? C.critical : C.primary
 
 export function ZoneMap({ zones }: { zones: Zone[] }) {
-  const W = 440, H = 300, pad = 30
-  const venues = zones.filter((z) => z.kind === 'venue')
-  const tourists = zones.filter((z) => z.kind === 'tourist')
+  const W = 440, H = 240, pad = 34
+  if (zones.length === 0) return null
 
   const lats = zones.map((z) => z.coords.lat)
   const lngs = zones.map((z) => z.coords.lng)
   const minLat = Math.min(...lats), maxLat = Math.max(...lats)
   const minLng = Math.min(...lngs), maxLng = Math.max(...lngs)
-  const nx = (lng: number) => pad + ((lng - minLng) / (maxLng - minLng || 1)) * (W - 2 * pad)
-  const ny = (lat: number) => pad + ((maxLat - lat) / (maxLat - minLat || 1)) * (H - 2 * pad)
-
-  // 행사장(올림픽파크) 클러스터 중심 → 그 자리에 region 박스 + 3×2 그리드
-  const pcx = venues.reduce((s, z) => s + nx(z.coords.lng), 0) / venues.length
-  const pcy = venues.reduce((s, z) => s + ny(z.coords.lat), 0) / venues.length
-  const rw = 150, rh = 96
-  const rx = Math.min(Math.max(pcx - rw / 2, 6), W - rw - 6)
-  const ry = Math.min(Math.max(pcy - rh / 2, 22), H - rh - 6)
-  const vpos = (i: number) => ({
-    x: rx + 34 + (i % 3) * 42,
-    y: ry + 42 + Math.floor(i / 3) * 34,
-  })
+  // 한 점뿐이거나 한 축으로 일직선이면 0 으로 나눈다 — 그 축은 가운데 세운다.
+  const spanLat = maxLat - minLat, spanLng = maxLng - minLng
+  const nx = (lng: number) => (spanLng ? pad + ((lng - minLng) / spanLng) * (W - 2 * pad) : W / 2)
+  const ny = (lat: number) => (spanLat ? pad + ((maxLat - lat) / spanLat) * (H - 2 * pad) : H / 2)
 
   return (
     <div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="전 거점 상황판">
-        {/* 배경 */}
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="거점 상황판">
         <rect x="0" y="0" width={W} height={H} rx="10" fill="#fbfcfc" />
-        {/* 나침반 */}
         <text x={W - 16} y="20" textAnchor="end" fontSize="10" fill={C.faint}>N ↑</text>
 
-        {/* 관광지 핀 (원) */}
-        {tourists.map((z) => {
+        {zones.map((z) => {
           const x = nx(z.coords.lng), y = ny(z.coords.lat)
+          // 우측 끝에 붙은 핀은 라벨이 프레임 밖으로 나가므로 왼쪽에 건다.
           const anchor = x > W - 70 ? 'end' : 'start'
           const lx = anchor === 'end' ? x - 9 : x + 9
           return (
             <g key={z.id}>
-              <circle cx={x} cy={y} r="6" fill={fillOf(z)} stroke="#fff" strokeWidth="1.5" />
+              {z.kind === 'venue' ? (
+                <rect x={x - 6} y={y - 6} width="12" height="12" rx="3" fill={fillOf(z)} stroke="#fff" strokeWidth="1.5" />
+              ) : (
+                <circle cx={x} cy={y} r="6" fill={fillOf(z)} stroke="#fff" strokeWidth="1.5" />
+              )}
               <text x={lx} y={y + 3.5} textAnchor={anchor} fontSize="10" fontWeight="600" fill={C.ink}>
-                {short[z.id]}
-              </text>
-            </g>
-          )
-        })}
-
-        {/* 행사장 클러스터 region */}
-        <rect x={rx} y={ry} width={rw} height={rh} rx="10" fill={C.region} stroke={C.regionLine} strokeWidth="1" />
-        <text x={rx + 12} y={ry + 18} fontSize="10.5" fontWeight="700" fill={C.primary}>
-          올림픽파크 · 행사장
-        </text>
-        {venues.map((z, i) => {
-          const p = vpos(i)
-          return (
-            <g key={z.id}>
-              <rect x={p.x - 6} y={p.y - 6} width="12" height="12" rx="3" fill={fillOf(z)} stroke="#fff" strokeWidth="1.5" />
-              <text x={p.x} y={p.y + 18} textAnchor="middle" fontSize="8.5" fontWeight="600" fill={C.ink}>
                 {short[z.id]}
               </text>
             </g>
@@ -91,15 +69,12 @@ export function ZoneMap({ zones }: { zones: Zone[] }) {
         })}
       </svg>
 
-      {/* 범례 */}
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-caption text-ink-muted">
+      {/* 색이 무엇을 뜻하는지 — 모양(행사장/관광지) 범례는 뺐다. 탭이 한 종류만 보여주므로
+          한 프레임에 모양이 하나뿐이라, 남겨두면 화면에 없는 구분을 설명하게 된다. */}
+      <div className="mt-2 flex items-center gap-x-4 px-1 text-caption text-ink-muted">
         <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm" style={{ background: C.primary }} />정상</span>
         <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm" style={{ background: C.critical }} />근무공백</span>
         <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm" style={{ background: C.neutral }} />비운영</span>
-        <span className="ml-auto flex items-center gap-2">
-          <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-[2px] border border-white bg-ink-faint" />행사장</span>
-          <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full border border-white bg-ink-faint" />관광지</span>
-        </span>
       </div>
     </div>
   )
