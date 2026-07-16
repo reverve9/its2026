@@ -2,9 +2,8 @@ import type { ReactNode } from 'react'
 
 // 헤더형 카드 컨테이너 + 페이지 헤더 — 화면은 이 위에 조립.
 
-export function Card({ className = '', children }: { className?: string; children: ReactNode }) {
-  return <div className={`card ${className}`}>{children}</div>
-}
+// ⚠️ 폐기: Card — `<div className="card">` 한 줄을 감싸기만 하던 컴포넌트. 소비자 0.
+// 화면들은 전부 `card` 유틸리티 클래스를 직접 쓴다(현장앱 카드들). 껍데기가 두 벌일 이유가 없다.
 
 export function Section({
   title,

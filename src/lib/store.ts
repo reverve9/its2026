@@ -176,7 +176,6 @@ export function setHazard(id: string, checked: boolean, at: string | null): void
 export const rawZones = (): Zone[] => zones
 export const rawAssignments = (): StoredAssignment[] => assignments
 export const rawEvents = (): StoredEvent[] => events
-export const rawDutyProfiles = (): StoredDutyProfile[] => dutyProfiles
 // 그날의 근태 프로필. 없으면 undefined = 평범하게 나와서 평범하게 일한 날.
 export const dutyProfileOf = (assignmentId: string, date: string): StoredDutyProfile | undefined =>
   dutyProfiles.find((p) => p.assignmentId === assignmentId && p.date === date)
@@ -227,7 +226,8 @@ export const dailyWageTaxRate = () => DAILY_WAGE_TAX_RATE
 export const opsDate = () => getNowDate()
 export const rawVendors = (): StoredVendor[] => vendors
 export const foodParasols = () => FOOD_PARASOLS
-export const findVendor = (id: string): StoredVendor | undefined => vendors.find((v) => v.id === id)
+// 내부 전용 — setVendorDoc 만 쓴다(services 의 getFoodVendor 는 소비자 0 이라 폐기).
+const findVendor = (id: string): StoredVendor | undefined => vendors.find((v) => v.id === id)
 
 export const findAssignment = (id: string): StoredAssignment | undefined =>
   assignments.find((a) => a.id === id)
@@ -235,7 +235,8 @@ export const zoneOf = (id: string | null): Zone | undefined =>
   id ? zones.find((z) => z.id === id) : undefined
 
 // 멱등 — 같은 키 이벤트가 이미 있으면 참.
-export const hasEventKey = (idempotencyKey: string): boolean =>
+// 내부 전용 — addEvent 의 멱등 가드. services 의 isDuplicateEvent 래퍼는 소비자 0 이라 폐기했다.
+const hasEventKey = (idempotencyKey: string): boolean =>
   events.some((e) => e.idempotencyKey === idempotencyKey)
 
 // ── 저수준 뮤테이션(멱등 + 통지) ────────────────────────
@@ -279,7 +280,6 @@ export function setGoods(id: string, patch: Partial<Omit<GoodsIssue, 'issuedAt'>
   return true
 }
 
-export const rawReadiness = (): Record<string, EducationRecord[]> => readiness
 export const educationOf = (personId: string): EducationRecord[] => readiness[personId] ?? []
 
 // 교육 이수 일괄 인증 — 오프라인 통합교육 참석자 여러 명을 한 번에 처리(이 기능의 핵심).
@@ -301,16 +301,9 @@ export function certifyEducation(
   return n
 }
 
-// 이수 취소(오기입 정정). 인증과 대칭으로 열어둔다.
-export function revokeEducation(personId: string, kind: EducationKind): boolean {
-  const recs = readiness[personId]
-  if (!recs) return false
-  const i = recs.findIndex((r) => r.kind === kind)
-  if (i < 0) return false
-  recs.splice(i, 1)
-  emitChange()
-  return true
-}
+// ⚠️ 폐기: revokeEducation(이수 취소) — '인증과 대칭으로 열어둔다'며 만들었는데 소비자가 0이었다.
+// 대칭은 설계 근거가 아니다. 이수 처리는 인력 현황의 일괄 인증 한 방향뿐이고, 취소 동선은 화면에 없다.
+// 취소가 필요해지면 그때 화면과 같이 만들 것.
 
 // 정산 서류·지급계좌 등록(마스터). 서류·계좌가 하나라도 들어오면 등록일을 찍는다.
 export function setPayout(id: string, patch: Partial<PayoutInfo>, at: string): boolean {

@@ -36,13 +36,10 @@ import {
   setPayout,
   educationOf,
   certifyEducation,
-  revokeEducation,
   rawVendors,
-  findVendor,
   foodParasols,
   setVendorDoc,
   placeReserve,
-  hasEventKey,
   rawSafety,
   setSuspension,
   setHazard,
@@ -123,7 +120,6 @@ export function getShiftSlots(s: Shift): string[] {
   return SLOTS[s].map(fmtHM)
 }
 export const shiftSlotMins = (s: Shift): number[] => SLOTS[s]
-export const shiftWindow = (s: Shift) => WIN[s]
 
 // ── 파생 헬퍼 ───────────────────────────────────────────
 // 이벤트는 라이브(날짜별)라 반드시 현재 날짜로 거른다. 이 한 줄이 날짜 축의 목이다 —
@@ -242,13 +238,9 @@ export async function getAssignments(): Promise<Assignment[]> {
   return roster(getNowMin())
 }
 // 로스터(별칭) — 배치 인력 전원.
-export const getRoster = getAssignments
 export async function getAssignment(id: string): Promise<Assignment | undefined> {
   const a = findAssignment(id)
   return a ? derive(a, getNowMin()) : undefined
-}
-export async function getReserves(): Promise<Assignment[]> {
-  return roster(getNowMin()).filter((a) => a.isReserve)
 }
 
 // 근무공백 대응(B 플로우) — 특정 거점 기준 예비인력 옵션. 거리·외국어 매칭 계산(R5).
@@ -436,7 +428,7 @@ export async function getActiveShift(): Promise<Shift> {
 // role 이 null 인 사람이 있다 — 슈퍼어드민은 StaffRole 셋 중 어느 것도 아니다.
 // 역할을 지목한 공지는 역할이 없는 사람에게 가지 않는다(거점 지목 공지가 거점 없는 사람에게
 // 안 가는 것과 같은 규칙).
-export function matchesAudience(
+function matchesAudience(
   person: { kind: StaffKind; role: StaffRole | null; zoneId: string | null },
   aud: Audience,
 ): boolean {
@@ -640,7 +632,7 @@ export interface StaffSettlementRow {
 
 // 일용근로소득 원천징수 — (일급 − 150,000) × 2.97%. 15만원 공제는 1일당이라 근무일수와 무관하게
 // 매일 적용된다 → 일급 15만원 이하면 며칠을 일하든 0원. 음수 방지로 하한 0.
-export function dailyWageWithholding(dailyWage: number, workedDays: number): number {
+function dailyWageWithholding(dailyWage: number, workedDays: number): number {
   const taxablePerDay = Math.max(0, dailyWage - dailyWageDeduction())
   return Math.round(taxablePerDay * (dailyWageTaxRate() / 100)) * workedDays
 }
@@ -789,12 +781,9 @@ export async function checkIn(
   })
 }
 
-export async function checkOut(
-  assignmentId: string,
-  opts: { ts: number; idempotencyKey: string }
-): Promise<boolean> {
-  return addEvent({ idempotencyKey: opts.idempotencyKey, assignmentId, date: getNowDate(), kind: 'checkout', timeMin: opts.ts })
-}
+// ⚠️ 폐기: checkOut — 퇴근 이벤트 쓰기. 소비자가 0이었다(현장앱에 퇴근 버튼이 없다).
+// 퇴근은 시드 이벤트이거나, 조 종료(win.end) 경과로 파생된다 — derive 의 `now >= win.end`.
+// 퇴근 버튼을 만들 거면 그때 다시 쓸 것. 안 불리는 쓰기 API 는 '있는 줄 알았다'를 만든다.
 
 export async function hourlyCheck(
   assignmentId: string,
@@ -850,11 +839,6 @@ export async function getPersonnel(): Promise<PersonnelRecord[]> {
   return rawAssignments().map(toPersonnel)
 }
 
-export async function getPersonnelRecord(id: string): Promise<PersonnelRecord | undefined> {
-  const a = findAssignment(id)
-  return a ? toPersonnel(a) : undefined
-}
-
 // 활동물품·정산서류는 자원봉사자 항목이다(본공고 3-1 제작·배부 + 실비 지급용).
 // 운영인력은 지급 대상도 실비 대상도 아니므로 모수에서 뺀다 — 넣으면 지급률·서류 등록률이 왜곡된다.
 export async function getGoodsSummary(): Promise<GoodsSummary> {
@@ -907,10 +891,6 @@ export async function certifyEducationBatch(
   return certifyEducation(personIds, kind, CURRENT_OPERATOR, at)
 }
 
-export async function revokeEducationOf(personId: string, kind: EducationKind): Promise<boolean> {
-  return revokeEducation(personId, kind)
-}
-
 // 정산 서류·지급계좌 등록(R3). 정산은 행사 후 일괄이므로 대장에서 사전 등록해 둔다.
 export async function setPayoutInfo(assignmentId: string, patch: Partial<PayoutInfo>): Promise<boolean> {
   return setPayout(assignmentId, patch, opsDate())
@@ -941,9 +921,6 @@ export async function getFoodVendors(kind?: VendorKind): Promise<FoodVendor[]> {
   return kind ? list.filter((v) => v.kind === kind) : list
 }
 
-export async function getFoodVendor(id: string): Promise<FoodVendor | undefined> {
-  return findVendor(id)
-}
 
 export async function getFoodSummary(): Promise<FoodSummary> {
   const list = rawVendors()
@@ -1091,7 +1068,6 @@ export async function fileIncidentReport(input: {
 }
 
 // 멱등 조회(호출측 재시도 판단용) — export 표면 유지.
-export const isDuplicateEvent = (idempotencyKey: string): boolean => hasEventKey(idempotencyKey)
 
 // ── 운영 기준 정보(정적) ─────────────────────────────────
 export const OPS_INFO = {

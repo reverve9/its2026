@@ -85,10 +85,8 @@ export function fmtHM(min: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
-export function hmToMin(hm: string): number {
-  const [h, m] = hm.split(':').map(Number)
-  return h * 60 + m
-}
+// ⚠️ 폐기: hmToMin — 소비자 0. time.ts 의 toMin 과 같은 일을 하는 중복이었다.
+// 'HH:mm → 분' 이 필요하면 toMin 을 쓸 것. 두 벌이면 한쪽만 고쳐지는 날이 온다.
 
 export function getNowHM(): string {
   return fmtHM(nowMin)
