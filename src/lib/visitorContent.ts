@@ -8,6 +8,7 @@
 import { rawZones, rawVendors } from './store'
 import { EMERGENCY_CONTACTS, SHUTTLE_INFO } from './info'
 import { OPS_INFO } from './services'
+import { emitChange } from './clock'
 
 export { EMERGENCY_CONTACTS, SHUTTLE_INFO }
 
@@ -53,7 +54,12 @@ export const PERFORMANCES: Performance[] = [
 ]
 
 // 체험·포토존
-export const EXPERIENCES = [
+export interface Experience {
+  title: string
+  place: string
+  org?: '조직위'
+}
+export const EXPERIENCES: Experience[] = [
   { title: 'ITS 상징 포토존', place: '도시홍보 구역' },
   { title: '스카시 포토존', place: '강릉 홍보관 앞' },
   { title: '전통문화·다문화 체험', place: '문화관광 구역', org: '조직위' },
@@ -216,7 +222,12 @@ export const COUPONS: Coupon[] = CITY_RESTAURANTS.filter((r) => r.coupon).map((r
 }))
 
 // 홈 하이라이트(오늘) — 대표 소식(런타임 공지는 별도).
-export const HIGHLIGHTS = [
+export interface Highlight {
+  tag: string
+  title: string
+  place: string
+}
+export const HIGHLIGHTS: Highlight[] = [
   { tag: '오늘', title: '19:00 드론 라이트 쇼', place: '올림픽파크 상공' },
   { tag: '쿠폰', title: '도심 맛집 쿠폰북 오픈', place: '맛집 · 마이페이지' },
   { tag: '포토존', title: 'ITS 상징 포토존 운영', place: '도시홍보 구역' },
@@ -249,3 +260,36 @@ export const FAQS: Faq[] = [
   { q: '유실물은 어디서 찾나요?', a: '종합안내소의 물품보관·유실물 창구에서 확인해 주세요.' },
   { q: '우천 시에도 진행하나요?', a: '실내 프로그램은 정상 운영하며, 야외 일정은 현장 공지로 안내합니다.' },
 ]
+
+// ── 콘솔 등록(in-memory · 시연 후 리로드 시 시드 복귀) ────
+// CMS 없음(D54)이라 실 편집은 코드지만, 콘솔 관리 화면엔 등록 개념을 보여준다 —
+// 발령하는 화면 없이 시드만 두던 Notices 의 구멍을 메운 것과 같은 취지(운영본부가 대신 등록).
+// 배열을 직접 밀고 emitChange 로 통지 → 콘솔 목록(useLiveVersion)·방문객 발행 뷰가 재조회.
+export function addVisitorNotice(n: VisitorNotice): void {
+  VISITOR_NOTICES.unshift(n) // 최근 발행이 위로
+  emitChange()
+}
+export function addFaq(f: Faq): void {
+  FAQS.push(f)
+  emitChange()
+}
+export function addPerformance(p: Performance): void {
+  PERFORMANCES.push(p)
+  emitChange()
+}
+export function addExperience(e: Experience): void {
+  EXPERIENCES.push(e)
+  emitChange()
+}
+export function addHighlight(h: Highlight): void {
+  HIGHLIGHTS.unshift(h)
+  emitChange()
+}
+// 쿠폰 발행 = 도심 맛집에 자율 혜택(coupon) 부여(§2-3 · 정산형 없음 · 표시만).
+export function setRestaurantCoupon(name: string, benefit: string): void {
+  const r = CITY_RESTAURANTS.find((x) => x.name === name)
+  if (r) {
+    r.coupon = benefit
+    emitChange()
+  }
+}
