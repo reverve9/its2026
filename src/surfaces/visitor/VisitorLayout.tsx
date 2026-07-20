@@ -45,41 +45,41 @@ export default function VisitorLayout() {
           capture ? 'h-[915px] w-[412px]' : 'h-[100dvh] w-full max-w-[460px]'
         }`}
       >
-        {/* 헤더 — 텍스처 배경 위 흰 로고(현장앱과 통일). 로고 = 홈 회귀. */}
-        <header className="relative isolate shrink-0 px-4 pb-3 pt-4 text-white">
-          <div aria-hidden className="absolute inset-0 -z-10 bg-primary-900 bg-cover bg-center" style={{ backgroundImage: `url(${bgHeader})` }} />
-          <div className="flex items-center justify-between">
-            <button onClick={() => navigate('/v')} className="flex items-center gap-2" aria-label="홈">
-              <img src={logoW} alt="강릉 ITS 세계총회 2026" className="h-9 w-auto" />
-            </button>
-            <div className="flex items-center gap-2">
-              {/* 다국어 토글 — 표시만(발행 다국어는 콘텐츠 단계) */}
-              <div className="flex overflow-hidden rounded-full border border-white/30 text-caption font-bold">
-                {(['KOR', 'ENG'] as const).map((l) => (
-                  <button
-                    key={l}
-                    onClick={() => setLang(l)}
-                    className={`px-2.5 py-1 transition ${lang === l ? 'bg-white/90 text-primary-800' : 'text-white/80'}`}
-                  >
-                    {l}
-                  </button>
-                ))}
-              </div>
-              {/* 마이 — 쿠폰북 연동(무PII·localStorage) */}
-              <NavLink
-                to={visitorMy.to}
-                className={({ isActive }) =>
-                  `grid h-8 w-8 place-items-center rounded-full border border-white/30 transition ${isActive ? 'bg-white/90 text-primary-800' : 'text-white hover:bg-white/15'}`
-                }
-                aria-label={visitorMy.label}
-              >
+        {/* 헤더 — 텍스처 배경 위 흰 로고(현장앱과 통일: px-5 pb-4 pt-6 · 로고 h-14). 로고 = 홈 회귀. */}
+        <header
+          className="flex shrink-0 items-center justify-between bg-primary-900 bg-cover bg-center px-5 pb-4 pt-6 text-white"
+          style={{ backgroundImage: `url(${bgHeader})` }}
+        >
+          <button onClick={() => navigate('/v')} className="flex items-center" aria-label="홈">
+            <img src={logoW} alt="강릉 ITS 세계총회 2026" className="h-14 w-auto" />
+          </button>
+          <div className="flex items-center gap-2">
+            {/* 다국어 토글 — 표시만(발행 다국어는 콘텐츠 단계) */}
+            <div className="flex overflow-hidden rounded-full border border-white/30 text-caption font-bold">
+              {(['KOR', 'ENG'] as const).map((l) => (
+                <button
+                  key={l}
+                  onClick={() => setLang(l)}
+                  className={`px-2.5 py-1 transition ${lang === l ? 'bg-white/90 text-primary-800' : 'text-white/80'}`}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+            {/* 마이 — 쿠폰북 연동(무PII·localStorage) */}
+            <NavLink
+              to={visitorMy.to}
+              className={({ isActive }) =>
+                `grid h-8 w-8 place-items-center rounded-full border border-white/30 transition ${isActive ? 'bg-white/90 text-primary-800' : 'text-white hover:bg-white/15'}`
+              }
+              aria-label={visitorMy.label}
+            >
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <circle cx="12" cy="8" r="3.5" />
                   <path d="M5 20c0-3.6 3.1-5.5 7-5.5s7 1.9 7 5.5" />
                 </svg>
               </NavLink>
             </div>
-          </div>
         </header>
 
         {/* 콘텐츠 */}
