@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
 import ConsoleLayout from './surfaces/console/ConsoleLayout'
 import FieldLayout from './surfaces/field/FieldLayout'
@@ -23,9 +24,25 @@ import { useCapture, setCapture } from './lib/capture'
 
 // 캡쳐/데모 편의용 서피스 전환기 — 최종 캡쳐 시 제거 가능(dev aid).
 // 캡쳐 모드에선 숨긴다(아트보드 오염 방지). '캡쳐' 버튼으로 캡쳐 모드 진입.
+// 최소화: 제자리에서 'DEV' 칩으로 접어 콘텐츠를 안 가린다. DEV 칩을 누르면 다시 펼침(도구별 독립).
 function SurfaceSwitcher() {
   const capture = useCapture()
+  const [min, setMin] = useState(false)
   if (capture) return null
+
+  // 최소화 — 같은 자리(하단 중앙)에 작은 DEV 칩만. 누르면 펼침.
+  if (min) {
+    return (
+      <button
+        onClick={() => setMin(false)}
+        className="no-print fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full border border-line bg-white/95 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-ink-muted shadow-lg backdrop-blur transition hover:bg-neutral-100"
+        title="서피스 전환기 펼치기"
+      >
+        DEV
+      </button>
+    )
+  }
+
   const items = [
     { to: '/', label: '운영본부 콘솔', end: true },
     { to: '/f', label: '현장 앱' },
@@ -53,6 +70,17 @@ function SurfaceSwitcher() {
         className="rounded-full px-3 py-1.5 text-caption font-semibold text-ink-muted transition hover:bg-neutral-100"
       >
         캡쳐
+      </button>
+      {/* 최소화 — 콘텐츠 가림 없이 제자리 DEV 칩으로 */}
+      <button
+        onClick={() => setMin(true)}
+        className="grid h-7 w-7 place-items-center rounded-full text-ink-faint transition hover:bg-neutral-100 hover:text-ink-muted"
+        aria-label="서피스 전환기 최소화"
+        title="최소화"
+      >
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M5 12h14" />
+        </svg>
       </button>
     </div>
   )

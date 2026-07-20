@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useNowMin, useNowDate } from '../lib/useLive'
 import { setNowMin, setNowDate, resetNow, fmtHM, SEEDED_DATES, DATE_LABELS } from '../lib/clock'
@@ -26,6 +27,7 @@ export default function TimeScrubber() {
   const now = useNowMin()
   const date = useNowDate()
   const capture = useCapture()
+  const [min, setMin] = useState(false)
   const shift = now < 14 * 60 ? '오전조' : '오후조'
 
   // 캡쳐 모드에선 아트보드 오염 방지 위해 스크러버 숨김.
@@ -38,6 +40,20 @@ export default function TimeScrubber() {
   // 현장앱(/f)에선 헤더를 가리지 않도록 하단으로(서피스 스위처 위). 콘솔은 상단.
   const isField = pathname.startsWith('/f')
   const posCls = isField ? 'bottom-16' : 'top-3'
+
+  // 최소화 — 같은 자리에 작은 DEV 칩(현재 시각)만. 누르면 펼침. 콘텐츠 안 가림.
+  if (min) {
+    return (
+      <button
+        onClick={() => setMin(false)}
+        className={`no-print fixed left-1/2 z-[60] flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-line bg-white/95 px-2.5 py-1 shadow-lg backdrop-blur transition hover:bg-neutral-100 ${posCls}`}
+        title="스크러버 펼치기"
+      >
+        <span className="rounded bg-neutral-900 px-1 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">DEV</span>
+        <span className="tnum text-caption font-bold text-primary-700">{fmtHM(now)}</span>
+      </button>
+    )
+  }
 
   return (
     <div className={`no-print fixed left-1/2 z-[60] w-[min(720px,92vw)] -translate-x-1/2 rounded-xl border border-line bg-white/95 px-4 py-2.5 shadow-lg backdrop-blur ${posCls}`}>
@@ -76,6 +92,17 @@ export default function TimeScrubber() {
           className="shrink-0 rounded-md border border-line px-2 py-1 text-caption font-semibold text-ink-muted transition hover:bg-neutral-100"
         >
           14:20 리셋
+        </button>
+        {/* 최소화 — 제자리 DEV 칩으로 */}
+        <button
+          onClick={() => setMin(true)}
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-ink-faint transition hover:bg-neutral-100 hover:text-ink-muted"
+          aria-label="스크러버 최소화"
+          title="최소화"
+        >
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M5 12h14" />
+          </svg>
         </button>
       </div>
       <div className="mt-1 flex justify-between px-[2px]">
