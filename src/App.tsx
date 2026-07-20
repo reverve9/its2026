@@ -6,6 +6,7 @@ import VisitorLayout from './surfaces/visitor/VisitorLayout'
 import VisitorHome from './surfaces/visitor/pages/Home'
 import VisitorAbout from './surfaces/visitor/pages/About'
 import VisitorProgram from './surfaces/visitor/pages/Program'
+import VisitorAround from './surfaces/visitor/pages/Around'
 import VisitorFood from './surfaces/visitor/pages/Food'
 import VisitorGuide from './surfaces/visitor/pages/Guide'
 import VisitorMy from './surfaces/visitor/pages/My'
@@ -112,6 +113,7 @@ export default function App() {
           <Route index element={<VisitorHome />} />
           <Route path="about" element={<VisitorAbout />} />
           <Route path="program" element={<VisitorProgram />} />
+          <Route path="around" element={<VisitorAround />} />
           <Route path="food" element={<VisitorFood />} />
           <Route path="guide" element={<VisitorGuide />} />
           <Route path="my" element={<VisitorMy />} />
