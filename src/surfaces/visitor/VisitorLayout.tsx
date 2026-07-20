@@ -82,26 +82,33 @@ export default function VisitorLayout() {
             </div>
         </header>
 
-        {/* 콘텐츠 */}
-        <main className="flex-1 overflow-auto bg-page">
+        {/* 콘텐츠 — 플로팅 탭이 하단을 덮으므로 pb로 여백 확보(마지막 항목 안 가림). */}
+        <main className="flex-1 overflow-auto bg-page pb-24">
           <Outlet />
         </main>
 
-        {/* 하단탭 — 콘텐츠 4개(단일 출처). 홈=로고 · 마이=헤더라 여기엔 없다. */}
-        <nav className="shrink-0 border-t border-line bg-surface">
-          <div className="flex">
+        {/* 하단탭 — 플로팅(무산·소개로 레시피). 콘텐츠 4개(단일 출처). 홈=로고 · 마이=헤더라 여기엔 없다.
+            페인 기준 absolute(fixed 아님) — 라이브·캡쳐(412) 둘 다 좌표 일치. 거터는 탭 통과(pointer-events). */}
+        <nav className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-[calc(12px+env(safe-area-inset-bottom))]">
+          <div className="pointer-events-auto flex rounded-full border border-line/60 bg-surface/80 shadow-[0_8px_28px_-8px_rgba(0,0,0,0.28)] backdrop-blur-md">
             {visitorTabs.map((t) => (
               <NavLink
                 key={t.to}
                 to={t.to}
                 className={({ isActive }) =>
-                  `flex flex-1 flex-col items-center gap-1 py-2 text-caption font-semibold transition ${
+                  `flex flex-1 flex-col items-center gap-1 py-2.5 text-caption font-semibold transition ${
                     isActive ? 'text-primary-600' : 'text-ink-faint hover:text-ink-muted'
                   }`
                 }
               >
-                <TabIcon to={t.to} />
-                {t.label}
+                {({ isActive }) => (
+                  <>
+                    <span className={`transition-transform ${isActive ? '-translate-y-0.5 scale-110' : ''}`}>
+                      <TabIcon to={t.to} />
+                    </span>
+                    {t.label}
+                  </>
+                )}
               </NavLink>
             ))}
           </div>
