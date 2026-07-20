@@ -11,18 +11,21 @@ import type { ConsoleRole } from './consoleAuth'
 // 화면 파일이 아니라 lib 에 있는 이유: ConsoleLayout 에서 export 하면 컴포넌트 파일이
 // 컴포넌트 아닌 걸 내보내게 되어 fast-refresh 가 깨진다(oxlint only-export-components).
 export type NavItem = { to: string; label: string; end?: boolean; superAdminOnly?: true }
-export type NavGroup = { title: string; items: NavItem[] }
-// 최상위 두 갈래 = 운영자가 쓰는 '현장' / 방문객에게 발행하는 '사용자'. 발행 경계가 IA 로 보인다.
+// title 있으면 접이식 묶음(아코디언), 없으면 섹션 아래 항목 직접 나열.
+export type NavGroup = { title?: string; items: NavItem[] }
+// 최상위 3갈래 = 운영 / 콘텐츠 / 정산. 발주처(client)는 대시보드 + '운영'만 본다(그 외 전부 superAdminOnly).
 export type NavSection = { title: string; groups: NavGroup[] }
 
-export const overview: NavItem = { to: '/', label: '통합 운영현황', end: true }
+export const overview: NavItem = { to: '/', label: '통합 운영 현황', end: true }
 
+// 3갈래 = 운영 / 콘텐츠 / 정산. 층위가 얕아 묶음 제목(예 '실시간 관제')은 없앤다 — 섹션이 곧 묶음.
+// 가림: '운영'만 발주처(client) 노출. '콘텐츠'·'정산'은 항목 전부 superAdminOnly(대시보드+운영만 공무원).
+// 소비자 셋(사이드바·URL 가드·대시보드 드릴다운)이 이 배열 하나를 본다(D46) — 경계는 항목의 superAdminOnly.
 export const sections: NavSection[] = [
   {
-    title: '현장 운영',
+    title: '운영',
     groups: [
       {
-        title: '실시간 관제',
         items: [
           { to: '/notices', label: '공지 및 안내' },
           { to: '/people', label: '인력 관리' },
@@ -31,32 +34,32 @@ export const sections: NavSection[] = [
           { to: '/report', label: '일일 운영 보고' },
         ],
       },
+    ],
+  },
+  {
+    // 방문객앱 발행/수집 + 내부 등록 대장. 프로그램·쿠폰·공지FAQ 는 골격(콘텐츠 추후).
+    title: '콘텐츠',
+    groups: [
       {
-        // 시간 비의존 마스터 대장 — 스크러버를 밀어도 불변.
-        // 정산도 같은 성격(일일 정산이 아니라 행사 후 일괄)이라 여기 하단에 둔다.
-        // '정산 마감'은 만들지 않았다: 일일 단위로 정산하지 않으므로 마감할 단위가 없다.
-        //
-        // 묶음 전체가 발주처(client)에게 안 보인다 — 셋 다 운영본부가 사업을 굴리려고 쥔
-        // 내부 대장이지 발주처 보고물이 아니다. 발주처가 보는 건 현황(대시보드·실시간 관제)이다.
-        // 셋에 각각 다는 게 중복이 아니다: 사이드바도 URL 가드도 묶음이 아니라 항목을 본다.
-        // 묶음에만 달면 /personnel 을 URL 로 직접 치는 경로가 열린 채로 남는다.
-        title: '현황 및 정산',
         items: [
+          { to: '/content-board', label: '공지사항 및 FAQ', superAdminOnly: true },
+          { to: '/survey', label: '만족도조사', superAdminOnly: true },
           { to: '/personnel', label: '인력 현황', superAdminOnly: true },
           { to: '/vendors', label: '업체 등록 현황', superAdminOnly: true },
-          { to: '/settlement', label: '정산 산출내역', superAdminOnly: true },
+          { to: '/programs', label: '프로그램', superAdminOnly: true },
         ],
       },
     ],
   },
   {
-    // 방문객앱 발행/수집 관리. 첫 항목 = 만족도조사 응답(방문객 설문 수집 뷰).
-    // 발행 콘텐츠(맛집 등록 등)는 추후 이 갈래에 순차 추가.
-    title: '사용자',
+    // 행사 후 일괄(일일 정산 아님) — '정산 마감' 없음(마감할 일 단위가 없다).
+    title: '정산',
     groups: [
       {
-        title: '방문객 수집',
-        items: [{ to: '/survey', label: '만족도조사 응답' }],
+        items: [
+          { to: '/coupons', label: '쿠폰 관리', superAdminOnly: true },
+          { to: '/settlement', label: '정산/산출내역', superAdminOnly: true },
+        ],
       },
     ],
   },

@@ -3,7 +3,7 @@ import {
   SURVEY_QUESTIONS, tally, scaleAverage, opinions, responseCount,
 } from '../../../lib/survey'
 
-// 만족도조사 응답(콘솔 · '사용자' 갈래 첫 항목) — 방문객 설문 수집 뷰(무산 AdminSurvey 개념).
+// 만족도조사 응답(콘솔 · '콘텐츠' 갈래) — 방문객 설문 수집 뷰(무산 AdminSurvey 개념).
 // 방문객 /v/survey 제출분 + 시드. 문항별 분포·척도 평균·주관식 의견.
 
 function Bar({ label, count, total, note }: { label: string; count: number; total: number; note?: string }) {

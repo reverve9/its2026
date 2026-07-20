@@ -27,9 +27,9 @@ export default function ConsoleLayout() {
   const capture = useCapture()
   const { pathname } = useLocation()
   const [session, setSession] = useState<ConsoleSession | null>(() => loadConsoleSession())
-  // 아코디언 접힘 — 묶음 제목 기준. 초기엔 맨 위 묶음만 펼치고 나머지는 접는다(메뉴가 많다).
+  // 아코디언 접힘 — 제목 있는 묶음 기준. 초기엔 첫 묶음만 펼치고 나머지는 접는다(제목 없는 묶음은 대상 아님).
   const [collapsed, setCollapsed] = useState<Set<string>>(
-    () => new Set(sections.flatMap((s) => s.groups).map((g) => g.title).slice(1))
+    () => new Set(sections.flatMap((s) => s.groups).map((g) => g.title).filter((t): t is string => !!t).slice(1))
   )
   const toggleGroup = (title: string) =>
     setCollapsed((prev) => {
@@ -84,15 +84,30 @@ export default function ConsoleLayout() {
           {/* 최상위 갈래(현장 / 사용자) → 그 아래 묶음은 아코디언 */}
           {sections.map((section) => {
             const visGroups = section.groups.filter((g) => g.items.some(visibleTo(session.role)))
+            // 보이는 항목이 하나도 없는 섹션은 통째로 숨긴다(발주처엔 콘텐츠·정산 섹션이 사라짐).
+            if (visGroups.length === 0) return null
             return (
               <div key={section.title} className="space-y-1">
                 <div className="px-2 text-label font-bold text-white">{section.title}</div>
-                {visGroups.map((g) => {
+                {visGroups.map((g, gi) => {
+                  const items = g.items.filter(visibleTo(session.role)).map((n) => (
+                    <NavLink key={n.to} to={n.to} end={n.end} className={navLinkClass}>
+                      {n.label}
+                    </NavLink>
+                  ))
+                  // 제목 없는 묶음 = 섹션 아래 항목 직접 나열(아코디언 없음).
+                  if (!g.title) {
+                    return (
+                      <div key={`${section.title}-${gi}`} className="space-y-0.5">
+                        {items}
+                      </div>
+                    )
+                  }
                   const open = !collapsed.has(g.title)
                   return (
                     <div key={g.title}>
                       <button
-                        onClick={() => toggleGroup(g.title)}
+                        onClick={() => toggleGroup(g.title!)}
                         className="flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white/70 transition hover:bg-white/10 hover:text-white/90"
                       >
                         <span>{g.title}</span>
@@ -109,15 +124,7 @@ export default function ConsoleLayout() {
                           <path d="M3 4.5 L6 7.5 L9 4.5" />
                         </svg>
                       </button>
-                      {open && (
-                        <div className="mt-0.5 space-y-0.5">
-                          {g.items.filter(visibleTo(session.role)).map((n) => (
-                            <NavLink key={n.to} to={n.to} end={n.end} className={navLinkClass}>
-                              {n.label}
-                            </NavLink>
-                          ))}
-                        </div>
-                      )}
+                      {open && <div className="mt-0.5 space-y-0.5">{items}</div>}
                     </div>
                   )
                 })}

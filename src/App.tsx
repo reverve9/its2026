@@ -24,6 +24,9 @@ import Issues from './surfaces/console/pages/Issues'
 import Notices from './surfaces/console/pages/Notices'
 import Report from './surfaces/console/pages/Report'
 import SurveyResponses from './surfaces/console/pages/Survey'
+import ContentBoard from './surfaces/console/pages/ContentBoard'
+import Programs from './surfaces/console/pages/Programs'
+import Coupons from './surfaces/console/pages/Coupons'
 import TimeScrubber from './components/TimeScrubber'
 import CaptureShell from './components/CaptureShell'
 import { useCapture, setCapture } from './lib/capture'
@@ -109,6 +112,9 @@ export default function App() {
           <Route path="/settlement" element={<Settlement />} />
           <Route path="/issues" element={<Issues />} />
           <Route path="/survey" element={<SurveyResponses />} />
+          <Route path="/content-board" element={<ContentBoard />} />
+          <Route path="/programs" element={<Programs />} />
+          <Route path="/coupons" element={<Coupons />} />
         </Route>
 
         {/* 현장 모바일 PWA — 역할 분기(봉사자 / 거점관리자) */}
