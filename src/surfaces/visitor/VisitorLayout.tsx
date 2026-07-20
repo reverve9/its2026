@@ -1,7 +1,7 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useCapture } from '../../lib/capture'
-import { visitorTabs, visitorMy } from '../../lib/visitorNav'
+import { visitorTabs, visitorMy, visitorMenu } from '../../lib/visitorNav'
 import logoW from '../../assets/logo-its-w.png'
 import bgHeader from '../../assets/bg-field-header.jpg'
 
@@ -36,10 +36,32 @@ function TabIcon({ to }: { to: string }) {
   )
 }
 
+// 헤더 메뉴 항목 아이콘(경로 매핑).
+const MENU_ICONS: Record<string, ReactNode> = {
+  '/v/notice': <path d="M4 10v4a1 1 0 001 1h2l6 4V5L7 9H5a1 1 0 00-1 1zm13-1a4 4 0 010 6" />,
+  '/v/location': (
+    <><path d="M12 21s-6.5-5.8-6.5-10.5a6.5 6.5 0 1113 0C18.5 15.2 12 21 12 21z" /><circle cx="12" cy="10.5" r="2.5" /></>
+  ),
+  '/v/faq': <><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 114 2c-1 .7-1.5 1.2-1.5 2.5M12 17.5v.01" /></>,
+  '/v/survey': <><path d="M9 4h6a1 1 0 011 1v0a1 1 0 01-1 1H9a1 1 0 01-1-1v0a1 1 0 011-1z" /><path d="M6 5H5a1 1 0 00-1 1v13a1 1 0 001 1h14a1 1 0 001-1V6a1 1 0 00-1-1h-1M8.5 12l2 2 4-4" /></>,
+}
+
 export default function VisitorLayout() {
   const capture = useCapture()
   const navigate = useNavigate()
   const [lang, setLang] = useState<'KOR' | 'ENG'>('KOR')
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // 바깥 클릭 시 헤더 메뉴 닫기(무산 Header 패턴).
+  useEffect(() => {
+    if (!menuOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [menuOpen])
 
   return (
     <div className={`flex w-full justify-center bg-page ${capture ? 'min-h-[915px]' : 'min-h-[100dvh]'}`}>
@@ -82,6 +104,39 @@ export default function VisitorLayout() {
                   <path d="M5 20c0-3.6 3.1-5.5 7-5.5s7 1.9 7 5.5" />
                 </svg>
               </NavLink>
+            {/* 헤더 메뉴(햄버거) — 5탭 밖 유틸리티(공지·오시는길·FAQ·만족도조사). 페인 기준 드롭다운. */}
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setMenuOpen((v) => !v)}
+                className={`grid h-8 w-8 place-items-center rounded-full border border-white/30 transition ${menuOpen ? 'bg-white/90 text-primary-800' : 'text-white hover:bg-white/15'}`}
+                aria-label="메뉴"
+                aria-expanded={menuOpen}
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+                  <path d="M4 7h16M4 12h16M4 17h16" />
+                </svg>
+              </button>
+              {menuOpen && (
+                <div className="absolute right-0 top-full z-40 mt-2 w-44 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-[0_12px_32px_-8px_rgba(0,0,0,0.3)]" role="menu">
+                  {visitorMenu.map((m) => (
+                    <button
+                      key={m.to}
+                      onClick={() => {
+                        setMenuOpen(false)
+                        navigate(m.to)
+                      }}
+                      className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-label text-ink-strong transition hover:bg-page"
+                      role="menuitem"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-ink-faint" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        {MENU_ICONS[m.to]}
+                      </svg>
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             </div>
         </header>
 

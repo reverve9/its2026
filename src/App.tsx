@@ -10,6 +10,10 @@ import VisitorAround from './surfaces/visitor/pages/Around'
 import VisitorFood from './surfaces/visitor/pages/Food'
 import VisitorGuide from './surfaces/visitor/pages/Guide'
 import VisitorMy from './surfaces/visitor/pages/My'
+import VisitorNotice from './surfaces/visitor/pages/Notice'
+import VisitorLocation from './surfaces/visitor/pages/Location'
+import VisitorFaq from './surfaces/visitor/pages/Faq'
+import VisitorSurvey from './surfaces/visitor/pages/Survey'
 import Dashboard from './surfaces/console/pages/Dashboard'
 import People from './surfaces/console/pages/People'
 import Personnel from './surfaces/console/pages/Personnel'
@@ -19,6 +23,7 @@ import Safety from './surfaces/console/pages/Safety'
 import Issues from './surfaces/console/pages/Issues'
 import Notices from './surfaces/console/pages/Notices'
 import Report from './surfaces/console/pages/Report'
+import SurveyResponses from './surfaces/console/pages/Survey'
 import TimeScrubber from './components/TimeScrubber'
 import CaptureShell from './components/CaptureShell'
 import { useCapture, setCapture } from './lib/capture'
@@ -103,6 +108,7 @@ export default function App() {
           <Route path="/report" element={<Report />} />
           <Route path="/settlement" element={<Settlement />} />
           <Route path="/issues" element={<Issues />} />
+          <Route path="/survey" element={<SurveyResponses />} />
         </Route>
 
         {/* 현장 모바일 PWA — 역할 분기(봉사자 / 거점관리자) */}
@@ -117,6 +123,10 @@ export default function App() {
           <Route path="food" element={<VisitorFood />} />
           <Route path="guide" element={<VisitorGuide />} />
           <Route path="my" element={<VisitorMy />} />
+          <Route path="notice" element={<VisitorNotice />} />
+          <Route path="location" element={<VisitorLocation />} />
+          <Route path="faq" element={<VisitorFaq />} />
+          <Route path="survey" element={<VisitorSurvey />} />
         </Route>
       </Routes>
       </CaptureShell>

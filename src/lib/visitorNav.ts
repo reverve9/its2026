@@ -13,6 +13,15 @@ export type VisitorNavItem = { to: string; label: string; end?: boolean }
 export const visitorHome: VisitorNavItem = { to: '/v', label: '홈', end: true }
 export const visitorMy: VisitorNavItem = { to: '/v/my', label: '마이' }
 
+// 헤더 메뉴(햄버거 드롭다운) = 5탭 밖 유틸리티(소개로·무산 헤더 메뉴 개념).
+// 콘텐츠 5탭과 분리 — 부차·수집 항목을 여기로 몰아 메뉴 분기를 정리한다.
+export const visitorMenu: VisitorNavItem[] = [
+  { to: '/v/notice', label: '공지사항' },
+  { to: '/v/location', label: '오시는 길' },
+  { to: '/v/faq', label: '자주 묻는 질문' },
+  { to: '/v/survey', label: '만족도조사' },
+]
+
 export const visitorTabs: VisitorNavItem[] = [
   { to: '/v/about', label: '개요' },
   { to: '/v/guide', label: '행사안내' },
