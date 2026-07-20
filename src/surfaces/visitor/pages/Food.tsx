@@ -1,12 +1,15 @@
 import { useState } from 'react'
 import VisitorPage from './VisitorPage'
 import Thumb from './Thumb'
-import { CITY_RESTAURANTS, RESTAURANT_CATEGORIES } from '../../../lib/visitorContent'
+import RestaurantModal from './RestaurantModal'
+import { CITY_RESTAURANTS, RESTAURANT_CATEGORIES, type CityRestaurant } from '../../../lib/visitorContent'
 
 // 맛집 — 음식점 지도(§2-3 명문). 도심·관광지 음식점, 행사장 FoodVendor 와 별개(D55).
 // 카테고리 칩 필터(소개로 개념) · 쿠폰 = 자율 혜택형·표시만(발급은 마이페이지).
+// 카드 탭 → 상세 모달(무산 메커니즘 · 소개로드 IA).
 export default function Food() {
   const [cat, setCat] = useState('전체')
+  const [sel, setSel] = useState<CityRestaurant | null>(null)
   const list = cat === '전체' ? CITY_RESTAURANTS : CITY_RESTAURANTS.filter((r) => r.category === cat)
 
   return (
@@ -29,7 +32,12 @@ export default function Food() {
 
         <div className="space-y-2">
           {list.map((r) => (
-            <div key={r.name} className="flex gap-3 rounded-xl border border-line bg-surface p-3 shadow-sm">
+            <button
+              key={r.name}
+              type="button"
+              onClick={() => setSel(r)}
+              className="flex w-full gap-3 rounded-xl border border-line bg-surface p-3 text-left shadow-sm transition active:scale-[0.99] hover:border-primary-200"
+            >
               <Thumb className="h-20 w-20 shrink-0 rounded-lg" />
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline justify-between gap-2">
@@ -47,10 +55,12 @@ export default function Food() {
                   )}
                 </div>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </div>
+
+      {sel && <RestaurantModal r={sel} onClose={() => setSel(null)} />}
     </VisitorPage>
   )
 }
