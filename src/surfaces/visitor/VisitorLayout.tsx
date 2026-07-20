@@ -20,8 +20,8 @@ const ICONS: Record<string, ReactNode> = {
   '/v/food': (
     <path d="M7 3v8m3-8v8m-3 0v10M17 3c-1.2 1-2 3-2 5s.8 3 2 3v10" />
   ),
-  '/v/tour': (
-    <path d="M12 21s-6.5-5.8-6.5-10.5a6.5 6.5 0 1113 0C18.5 15.2 12 21 12 21zm0-8a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" />
+  '/v/guide': (
+    <path d="M9 3 3 5v16l6-2 6 2 6-2V3l-6 2-6-2zm0 0v16m6-14v16" />
   ),
 }
 

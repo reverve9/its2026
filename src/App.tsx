@@ -6,7 +6,7 @@ import VisitorHome from './surfaces/visitor/pages/Home'
 import VisitorAbout from './surfaces/visitor/pages/About'
 import VisitorProgram from './surfaces/visitor/pages/Program'
 import VisitorFood from './surfaces/visitor/pages/Food'
-import VisitorTour from './surfaces/visitor/pages/Tour'
+import VisitorGuide from './surfaces/visitor/pages/Guide'
 import VisitorMy from './surfaces/visitor/pages/My'
 import Dashboard from './surfaces/console/pages/Dashboard'
 import People from './surfaces/console/pages/People'
@@ -85,7 +85,7 @@ export default function App() {
           <Route path="about" element={<VisitorAbout />} />
           <Route path="program" element={<VisitorProgram />} />
           <Route path="food" element={<VisitorFood />} />
-          <Route path="tour" element={<VisitorTour />} />
+          <Route path="guide" element={<VisitorGuide />} />
           <Route path="my" element={<VisitorMy />} />
         </Route>
       </Routes>
