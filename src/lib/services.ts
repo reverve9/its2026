@@ -483,7 +483,7 @@ export function describeAudience(aud: Audience, zones: Zone[]): string {
   const parts: string[] = []
   if (aud.kinds?.length) parts.push(aud.kinds.join('·'))
   // 구분 축(역할 + 관리자)은 한 덩어리로 묶어 표기한다 — 판정에서 OR 인 것이 화면에서도 한 칸이다.
-  const 구분 = [...(aud.roles?.map((r) => roleLabel[r]) ?? []), ...(aud.admin ? ['관리자'] : [])]
+  const 구분 = [...(aud.roles?.map((r) => roleLabel[r]) ?? []), ...(aud.admin ? ['운영본부'] : [])]
   if (구분.length) parts.push(구분.join('·'))
   if (aud.zoneIds?.length) {
     const names = aud.zoneIds.map((id) => zones.find((z) => z.id === id)?.name ?? id)

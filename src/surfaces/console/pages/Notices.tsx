@@ -45,7 +45,7 @@ export default function Notices() {
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [roles, setRoles] = useState<StaffRole[]>([])
-  const [admin, setAdmin] = useState(false) // 관리자(슈퍼어드민) — role 이 아니라 신원. 구분 축에서 roles 와 OR
+  const [admin, setAdmin] = useState(false) // 운영본부(슈퍼어드민) — role 이 아니라 신원. 구분 축에서 roles 와 OR
   const [zoneIds, setZoneIds] = useState<string[]>([])
 
   // 축이 비면 그 축은 audience 에 넣지 않는다(=거르지 않는다). 전부 비면 {} = 전원.
@@ -90,7 +90,7 @@ export default function Notices() {
                 {TARGETS.map((t) => (
                   <Pill key={t.role} on={roles.includes(t.role)} onClick={() => setRoles(toggle(roles, t.role))}>{t.label}</Pill>
                 ))}
-                <Pill on={admin} onClick={() => setAdmin(!admin)}>관리자</Pill>
+                <Pill on={admin} onClick={() => setAdmin(!admin)}>운영본부</Pill>
               </div>
             </div>
             <div>
