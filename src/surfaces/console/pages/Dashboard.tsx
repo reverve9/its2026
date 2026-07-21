@@ -107,7 +107,7 @@ export default function Dashboard() {
           <Link
             to="/personnel?edu=pending"
             className="rounded-xl transition hover:opacity-80"
-            aria-label={`사전 통합교육 미이수 ${edu.pending}명 명단 보기`}
+            aria-label={`공통교육 미이수 ${edu.pending}명 명단 보기`}
           >
             <StatTile
               label="교육 이수율"

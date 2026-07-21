@@ -140,18 +140,18 @@ export interface GoodsSummary {
 // 교육 이수 집계(파생) — 대시보드 KPI·인력 현황 요약.
 export interface EducationSummary {
   total: number // 대상 인원(배치 인력)
-  done: number // 사전 통합교육 이수
-  pending: number // 사전 통합교육 미이수
+  done: number // 공통교육 이수
+  pending: number // 공통교육 미이수
   rate: number // 이수율(%)
-  fieldDone: number // 현장교육 이수
+  fieldDone: number // 특화교육 이수
 }
 
 // ②-2 교육 이수 — **봉사자(사람) 단위** 귀속 ───────────────
 // 배치(assignment)가 아니라 사람에 붙는다: 한 번 이수하면 그 사람의 모든 배치에 적용.
 // 이수 처리는 오프라인 통합교육 후 관리자가 일괄(batch) 인증하며, 봉사자 self-확인은 없다.
 // 미이수는 soft 플래그 — 예비 투입을 막지 않고 경고·정렬로만 다룬다.
-export type EducationKind = '사전 통합교육' | '현장교육' // 확장 가능(향후 종류 추가)
-export const EDUCATION_KINDS: EducationKind[] = ['사전 통합교육', '현장교육']
+export type EducationKind = '공통교육' | '특화교육' // 확장 가능(향후 종류 추가)
+export const EDUCATION_KINDS: EducationKind[] = ['공통교육', '특화교육']
 
 // 증빙 3종 — 누가(인증자) · 언제(이수 일시) · 무슨 교육(교육구분).
 export interface EducationRecord {

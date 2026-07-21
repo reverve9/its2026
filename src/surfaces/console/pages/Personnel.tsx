@@ -76,7 +76,7 @@ function GoodsCell({ on, onToggle, label }: { on: boolean; onToggle: () => void;
 }
 
 // 자원봉사자 항목이 아닌 칸 — 교육 이수·활동물품·정산 서류는 셋 다 자원봉사자 항목이다
-// (본공고 3-1 제작·배부 + 실비 지급용 · 사전 통합교육). 운영인력에겐 그 사실 자체가 없다.
+// (본공고 3-1 제작·배부 + 실비 지급용 · 공통교육). 운영인력에겐 그 사실 자체가 없다.
 // '미이수'·'미등록'으로 찍으면 화면이 없는 결손을 말하고, 물품은 토글이라 실제로 지급까지 된다
 // — getGoodsSummary 는 운영인력을 모수에서 빼므로 집계는 안 변하고 store 만 조용히 갈린다.
 const NotApplicable = () => <span className="text-ink-faint">—</span>
@@ -98,7 +98,7 @@ export default function Personnel() {
     setParams(next, { replace: true })
   }
   const [selected, setSelected] = useState<Set<string>>(new Set()) // personId 집합
-  const [certKind, setCertKind] = useState<EducationKind>('사전 통합교육')
+  const [certKind, setCertKind] = useState<EducationKind>('공통교육')
   const [toast, setToast] = useState('')
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'no', dir: 1 })
   // 훅은 조기 반환(`if (!people || !goods)`) 앞에서 — 필터가 바뀌면 1페이지로.
@@ -114,9 +114,9 @@ export default function Personnel() {
   const goodsDone = (p: PersonnelRecord) => (p.goods.jacket ? 1 : 0) + (p.goods.bag ? 1 : 0)
   // 교육 이수율 — 자원봉사자 배치 인력 기준(예비 제외). 대시보드 KPI(getEducationSummary)와 같은 모수.
   // kind 를 안 가르면 모수가 132(운영인력 22 포함)가 되어 같은 숫자가 여기선 77%, 대시보드에선 92%로
-  // 갈린다. 사전 통합교육은 자원봉사자 항목이라 운영인력에겐 이수 이력 자체가 없다.
+  // 갈린다. 공통교육은 자원봉사자 항목이라 운영인력에겐 이수 이력 자체가 없다.
   const eduBase = people.filter((p) => p.kind === '자원봉사자' && !p.isReserve)
-  const eduDone = eduBase.filter((p) => hasEducation(p.education, '사전 통합교육')).length
+  const eduDone = eduBase.filter((p) => hasEducation(p.education, '공통교육')).length
   const eduPending = eduBase.length - eduDone
   const eduRate = eduBase.length ? Math.round((eduDone / eduBase.length) * 100) : 0
 
@@ -136,7 +136,7 @@ export default function Personnel() {
       (shift === 'all' || (isVol(p) && p.shift === shift)) &&
       inZone(p) &&
       (!payoutPendingOnly || (isVol(p) && !payoutReady(p.payout))) &&
-      (!eduPendingOnly || (isVol(p) && !hasEducation(p.education, '사전 통합교육'))) &&
+      (!eduPendingOnly || (isVol(p) && !hasEducation(p.education, '공통교육'))) &&
       matchQ(p)
   )
   const rows =
@@ -153,7 +153,7 @@ export default function Personnel() {
             case 'goods': return d * (goodsDone(a) - goodsDone(b))
             case 'payout': return d * (Number(payoutReady(a.payout)) - Number(payoutReady(b.payout)))
             case 'edu':
-              return d * (Number(hasEducation(a.education, '사전 통합교육')) - Number(hasEducation(b.education, '사전 통합교육')))
+              return d * (Number(hasEducation(a.education, '공통교육')) - Number(hasEducation(b.education, '공통교육')))
             default: return 0
           }
         })
@@ -217,8 +217,8 @@ export default function Personnel() {
           value: (p) =>
             !isVol(p)
               ? '—'
-              : hasEducation(p.education, '사전 통합교육')
-                ? `이수${hasEducation(p.education, '현장교육') ? ' · 현장' : ''}`
+              : hasEducation(p.education, '공통교육')
+                ? `이수${hasEducation(p.education, '특화교육') ? ' · 특화' : ''}`
                 : '미이수',
         },
         { label: '바람막이', value: (p) => (isVol(p) ? (p.goods.jacket ? '지급' : '미지급') : '—') },
@@ -284,7 +284,7 @@ export default function Personnel() {
           tone={goods.payoutPending ? 'warn' : 'ok'}
         />
         <SummaryTile
-          label="사전 통합교육 이수"
+          label="공통교육 이수"
           value={`${eduRate}%`}
           sub={eduPending ? `미이수 ${eduPending} / ${eduBase.length}` : `전원 이수 완료 (${eduBase.length})`}
           tone={eduPending ? 'warn' : 'ok'}
@@ -496,9 +496,9 @@ export default function Personnel() {
                 <td className="px-3 py-2.5">
                   {!isVol(p) ? (
                     <NotApplicable />
-                  ) : hasEducation(p.education, '사전 통합교육') ? (
+                  ) : hasEducation(p.education, '공통교육') ? (
                     <span className="rounded-md bg-ok-soft px-2 py-0.5 text-caption font-semibold text-ok">
-                      이수{hasEducation(p.education, '현장교육') ? ' · 현장' : ''}
+                      이수{hasEducation(p.education, '특화교육') ? ' · 특화' : ''}
                     </span>
                   ) : (
                     <span className="rounded-md bg-warn-soft px-2 py-0.5 text-caption font-semibold text-warn">미이수</span>

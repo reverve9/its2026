@@ -253,7 +253,7 @@ export interface ReserveOption {
   assignment: Assignment
   distanceKm: number | null // 대기 위치 → 대상 거점 거리
   langMatch: boolean // 외국어 가능(관광지 우선배치 근거)
-  educated: boolean // 사전 통합교육 이수 — 자격 신호(soft). 미이수여도 선택은 막지 않는다.
+  educated: boolean // 공통교육 이수 — 자격 신호(soft). 미이수여도 선택은 막지 않는다.
 }
 export async function getReserveOptions(zoneId: string): Promise<ReserveOption[]> {
   const zone = await getZone(zoneId)
@@ -263,7 +263,7 @@ export async function getReserveOptions(zoneId: string): Promise<ReserveOption[]
       assignment: r,
       distanceKm: zone && r.standby ? Math.round((distanceM(r.standby, zone.coords) / 1000) * 10) / 10 : null,
       langMatch: (r.lang?.length ?? 0) > 0,
-      educated: hasEducation(educationOf(r.personId), '사전 통합교육'),
+      educated: hasEducation(educationOf(r.personId), '공통교육'),
     }))
     // 이수자 우선 → 그다음 거리순. 미이수는 뒤로 밀되 목록에서 빼지 않는다(하드 블록 금지).
     .sort((a, b) => Number(b.educated) - Number(a.educated) || (a.distanceKm ?? 999) - (b.distanceKm ?? 999))
@@ -919,16 +919,16 @@ export async function getEducation(personId: string): Promise<EducationRecord[]>
   return educationOf(personId)
 }
 
-// 사전 통합교육은 자원봉사자 대상(운영인력은 자체 교육) → 이수율 모수 = 배치 봉사자 110.
+// 공통교육은 자원봉사자 대상(운영인력은 자체 교육) → 이수율 모수 = 배치 봉사자 110.
 export async function getEducationSummary(): Promise<EducationSummary> {
   const list = rawAssignments().filter((a) => !a.isReserve && a.kind === '자원봉사자')
-  const done = list.filter((a) => hasEducation(educationOf(a.personId), '사전 통합교육')).length
+  const done = list.filter((a) => hasEducation(educationOf(a.personId), '공통교육')).length
   return {
     total: list.length,
     done,
     pending: list.length - done,
     rate: list.length ? Math.round((done / list.length) * 100) : 0,
-    fieldDone: list.filter((a) => hasEducation(educationOf(a.personId), '현장교육')).length,
+    fieldDone: list.filter((a) => hasEducation(educationOf(a.personId), '특화교육')).length,
   }
 }
 

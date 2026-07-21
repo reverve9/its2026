@@ -85,7 +85,7 @@ export default function VolunteerHome({ session, onLogout }: { session: FieldSes
     setSosSent(true)
   }
 
-  const eduRec = educationRecord(education ?? [], '사전 통합교육')
+  const eduRec = educationRecord(education ?? [], '공통교육')
 
   return (
     <div className="flex h-full flex-col">
@@ -136,7 +136,7 @@ export default function VolunteerHome({ session, onLogout }: { session: FieldSes
 
           {/* 교육 이수 — 읽기 전용(버튼 없음). 이수 처리는 운영본부 일괄 인증뿐. */}
           <div className="mt-3 flex items-center justify-between border-t border-line-soft pt-3">
-            <span className="text-label text-ink-muted">사전 통합교육</span>
+            <span className="text-label text-ink-muted">공통교육</span>
             {eduRec ? (
               <span className="text-label font-semibold text-ok">이수 완료 · {eduRec.certifiedAt.slice(5, 10).replace('-', '월 ')}일</span>
             ) : (

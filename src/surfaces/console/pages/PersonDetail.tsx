@@ -117,7 +117,7 @@ export default function PersonDetailModal({
   const payout: PayoutInfo = a?.payout ?? { idCard: false, bankbook: false }
   const payDone = payoutReady(payout)
   const education = data?.education ?? []
-  const eduDone = !!educationRecord(education, '사전 통합교육')
+  const eduDone = !!educationRecord(education, '공통교육')
 
   const scans = data?.scans ?? []
   // scannerId 가 null 인 서명 = 슈퍼어드민이 찍은 것. 배치가 없어 명부에 없는 게 정상이다.
@@ -326,7 +326,7 @@ export default function PersonDetailModal({
                   title="교육 이수"
                   right={
                     <span className={`text-caption font-semibold ${eduDone ? 'text-ok' : 'text-warn'}`}>
-                      {eduDone ? '사전 통합교육 이수' : '사전 통합교육 미이수'}
+                      {eduDone ? '공통교육 이수' : '공통교육 미이수'}
                     </span>
                   }
                 >

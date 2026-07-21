@@ -81,8 +81,8 @@ const payoutOf = (i: number, name: string): PayoutInfo => {
   }
 }
 // 교육 이수(사람 단위) — 오프라인 통합교육 후 관리자 일괄 인증의 결과 기록.
-// 사전 통합교육: 대부분 이수(미이수 소수 = 일괄 인증·미이수 드릴다운이 화면에서 의미 있게).
-// 현장교육: 일부만 이수 → 개인 상세 이력 섹션이 교육구분별로 변화 있게 보인다.
+// 공통교육: 대부분 이수(미이수 소수 = 일괄 인증·미이수 드릴다운이 화면에서 의미 있게).
+// 특화교육: 일부만 이수 → 개인 상세 이력 섹션이 교육구분별로 변화 있게 보인다.
 const CERTIFIERS = ['운영본부 총괄', '자원봉사 담당', '거점 총괄']
 // 교육 이수는 자원봉사자 항목이다(운영인력은 자체 교육 — gid 111~132 은 여기 안 들어온다).
 // gid 1~110 배치 봉사자 · 133~139 예비. 예비 중 1명(p-135)을 미이수로 둬야 근무공백 대응의
@@ -90,15 +90,15 @@ const CERTIFIERS = ['운영본부 총괄', '자원봉사 담당', '거점 총괄
 // 이수율 KPI 는 배치 봉사자만 세므로 이 예외는 92% 수치에 영향 없다.
 const eduOf = (i: number): EducationRecord[] => {
   const recs: EducationRecord[] = []
-  if (i % 13 !== 5 && i !== 135) // 미이수 소수(≈8%) — 나머지는 사전 통합교육 이수
+  if (i % 13 !== 5 && i !== 135) // 미이수 소수(≈8%) — 나머지는 공통교육 이수
     recs.push({
-      kind: '사전 통합교육',
+      kind: '공통교육',
       certifiedBy: CERTIFIERS[i % CERTIFIERS.length],
       certifiedAt: `2026-10-17 ${14 + (i % 3)}:${String((i * 7) % 60).padStart(2, '0')}`,
     })
-  if (i % 3 === 0) // 현장교육은 일부만
+  if (i % 3 === 0) // 특화교육은 일부만
     recs.push({
-      kind: '현장교육',
+      kind: '특화교육',
       certifiedBy: CERTIFIERS[(i + 1) % CERTIFIERS.length],
       certifiedAt: `2026-10-19 09:${String((i * 11) % 60).padStart(2, '0')}`,
     })
@@ -464,7 +464,7 @@ export { assignments, events, dutyProfiles, scans }
 
 // 교육 이수 시드 — personId 키. 배치가 아니라 '사람'에 귀속되므로 별도 테이블로 둔다.
 // (같은 사람이 여러 날 배치를 가져도 이수는 한 번만 기록된다.)
-// 사전 통합교육은 자원봉사자 대상 — 운영인력은 직영 스태프라 자체 교육 체계이므로 여기 없다.
+// 공통교육은 자원봉사자 대상 — 운영인력은 직영 스태프라 자체 교육 체계이므로 여기 없다.
 export const readiness: Record<string, EducationRecord[]> = Object.fromEntries(
   assignments
     .map((a, i) => [a, i + 1] as const)
