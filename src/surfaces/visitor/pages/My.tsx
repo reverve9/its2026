@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import VisitorPage from './VisitorPage'
 import Thumb from './Thumb'
 import { COUPONS } from '../../../lib/visitorContent'
@@ -12,13 +13,44 @@ import {
   issueCoupon,
   type IssuedCoupon,
 } from '../../../lib/visitorWallet'
+import { loadSavedPhotos, type SavedPhoto } from '../../../lib/photozone'
 
 // 마이페이지 — 무PII 핸드폰 신원(무산 개념) + 쿠폰 발급(무산 coupons 개념).
 // 미로그인 = 전화번호 입력 게이트 · 로그인 = 발급 가능 쿠폰 + 내 쿠폰북.
+// 내 사진(포토존)은 게이트 밖 — 무인증이라 로그인 여부와 무관하게 보인다.
 export default function My() {
   const [phone, setPhone] = useState<string | null>(loadPhone())
   const [input, setInput] = useState('')
   const [issued, setIssued] = useState<IssuedCoupon[]>(loadIssued())
+  const [photos] = useState<SavedPhoto[]>(loadSavedPhotos())
+
+  // 내 사진 — 포토존에서 받아 담은 사진. 탭하면 원본 저장.
+  const photoSection = (
+    <section>
+      <h2 className="mb-2 text-label font-bold text-ink-muted">내 사진</h2>
+      {photos.length === 0 ? (
+        <Link
+          to="/v/photo"
+          className="block rounded-xl border border-dashed border-line bg-page py-10 text-center text-caption text-ink-faint"
+        >
+          포토존에서 받은 사진이 없습니다 ›
+        </Link>
+      ) : (
+        <div className="grid grid-cols-3 gap-2">
+          {photos.map((p) => (
+            <a
+              key={p.id}
+              href={p.src}
+              download={`its-photozone-${p.id}.jpg`}
+              className="overflow-hidden rounded-lg border border-line bg-surface shadow-sm"
+            >
+              <img src={p.src} alt="내 사진" className="aspect-square w-full object-cover" />
+            </a>
+          ))}
+        </div>
+      )}
+    </section>
+  )
 
   // ── 미로그인: 전화번호 게이트 ──
   if (!phone) {
@@ -49,6 +81,8 @@ export default function My() {
             </button>
           </div>
           <p className="px-1 text-caption text-ink-faint">전화번호는 쿠폰 발급·조회에만 쓰이며 브라우저에만 저장됩니다.</p>
+          {/* 내 사진 = 무인증 — 로그인 전에도 보인다 */}
+          {photos.length > 0 && photoSection}
         </div>
       </VisitorPage>
     )
@@ -75,6 +109,9 @@ export default function My() {
             로그아웃
           </button>
         </div>
+
+        {/* 내 사진 — 포토존 수신함(무인증) */}
+        {photoSection}
 
         {/* 발급 가능 쿠폰 */}
         {available.length > 0 && (

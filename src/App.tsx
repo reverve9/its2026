@@ -9,6 +9,7 @@ import VisitorProgram from './surfaces/visitor/pages/Program'
 import VisitorAround from './surfaces/visitor/pages/Around'
 import VisitorFood from './surfaces/visitor/pages/Food'
 import VisitorGuide from './surfaces/visitor/pages/Guide'
+import VisitorPhoto from './surfaces/visitor/pages/Photo'
 import VisitorMy from './surfaces/visitor/pages/My'
 import VisitorNotice from './surfaces/visitor/pages/Notice'
 import VisitorLocation from './surfaces/visitor/pages/Location'
@@ -128,6 +129,7 @@ export default function App() {
           <Route path="around" element={<VisitorAround />} />
           <Route path="food" element={<VisitorFood />} />
           <Route path="guide" element={<VisitorGuide />} />
+          <Route path="photo" element={<VisitorPhoto />} />
           <Route path="my" element={<VisitorMy />} />
           <Route path="notice" element={<VisitorNotice />} />
           <Route path="location" element={<VisitorLocation />} />

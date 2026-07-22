@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import VisitorPage from './VisitorPage'
 import {
   VENUE_ZONES,
@@ -13,6 +14,24 @@ export default function Guide() {
   return (
     <VisitorPage title="행사안내">
       <div className="space-y-5">
+        {/* 포토존 단체사진 — 진입 배너(서브라우트 /v/photo). IA상 포토존의 공식 집 */}
+        <Link
+          to="/v/photo"
+          className="flex items-center gap-3 rounded-2xl border border-primary-100 bg-primary-50 p-4 shadow-sm transition active:scale-[0.99]"
+        >
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary-600 text-white">
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" />
+              <circle cx="12" cy="13" r="3.2" />
+            </svg>
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-label font-bold text-ink-strong">포토존 단체사진</span>
+            <span className="block truncate text-caption text-primary-700">찍고 QR로 바로 나눠요</span>
+          </span>
+          <span className="shrink-0 text-primary-400">›</span>
+        </Link>
+
         {/* 배치도 — 정적 배치도 자리(발주기관 배치도 확정 시 이미지 교체) */}
         <section>
           <h2 className="mb-2 text-label font-bold text-ink-muted">행사장 배치도</h2>

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { useNowMin, useNowDate } from '../../../lib/useLive'
 import { EVENT, PERFORMANCES, HIGHLIGHTS } from '../../../lib/visitorContent'
 import heroImg from '../../../assets/hero-visitor.jpg'
+import photozoneImg from '../../../assets/photozone-group.jpg'
 
 // 방문객앱 홈(로고 진입) — 사진 히어로 밴드 + 다음 공연 + 오늘 하이라이트 + 빠른진입.
 // 히어로는 헤더와 이어지는 풀블리드 사진 밴드(강릉 올림픽파크) — 상단을 강한 시각면으로.
@@ -42,6 +43,17 @@ export default function Home() {
       </section>
 
       <div className="space-y-4 p-4">
+      {/* 포토존 단체사진 — 진입 배너(발견성·제안 임팩트) */}
+      <Link to="/v/photo" className="relative flex items-center gap-3 overflow-hidden rounded-xl border border-line bg-surface p-3 shadow-sm transition active:scale-[0.99]">
+        <img src={photozoneImg} alt="" className="h-14 w-16 shrink-0 rounded-lg object-cover" />
+        <span className="min-w-0 flex-1">
+          <span className="inline-flex rounded-full bg-primary-50 px-2 py-0.5 text-caption font-bold text-primary-700">NEW</span>
+          <span className="mt-0.5 block truncate text-label font-semibold text-ink-strong">포토존 단체사진 공유</span>
+          <span className="block truncate text-caption text-ink-muted">찍고 QR로 함께 찍은 분들과 바로 나눠요</span>
+        </span>
+        <span className="shrink-0 text-ink-faint">›</span>
+      </Link>
+
       {/* 다음 공연 */}
       <Link to="/v/program" className="flex items-center gap-3 rounded-xl border border-line bg-surface p-4 shadow-sm transition active:scale-[0.99]">
         <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-primary-600 text-white">
